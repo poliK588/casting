@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CastingHub — Admin Dashboard</title>
+
+  <!-- React 18 -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Babel (JSX in browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Dexie.js (IndexedDB wrapper) -->
+  <script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            navy: {
+              950: '#020617',
+              900: '#0f172a',
+              850: '#172554', // Approximate
+              800: '#1e293b',
+              700: '#334155',
+              600: '#475569',
+              500: '#64748b',
+              400: '#94a3b8',
+              200: '#e2e8f0',
+              100: '#f1f5f9',
+              50: '#f8fafc',
+            },
+            accent: '#3b82f6'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body, #root { height: 100%; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: #f8fafc; overflow: hidden; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 99px; background: #e2e8f0; outline: none; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #0f172a; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(15,23,42,.3); }
+    .custom-cb { appearance: none; width: 15px; height: 15px; border: 1.5px solid #cbd5e1; border-radius: 4px; cursor: pointer; background: #fff; flex-shrink: 0; transition: all .15s; }
+    .custom-cb:checked { background: #3b82f6; border-color: #3b82f6; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10'%3E%3Cpath d='M1 5l3 4L11 1' stroke='%23fff' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-size: 10px 8px; background-repeat: no-repeat; background-position: center; }
+    .card-actions { opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
+    .talent-card:hover .card-actions { opacity: 1; transform: translateY(0); }
+    .talent-card { transition: transform .18s, box-shadow .18s; }
+    .talent-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(15,23,42,.13); }
+    .modal-backdrop { animation: fadeIn .15s ease; }
+    .modal-panel { animation: slideUp .2s cubic-bezier(.4,0,.2,1); }
+    @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
+    @keyframes slideUp { from { opacity:0; transform:translateY(20px) } to { opacity:1; transform:translateY(0) } }
+    .sidebar-expanded .sidebar-label { opacity: 1 !important; max-width: 140px !important; }
+    .sidebar-collapsed .sidebar-label { opacity: 0 !important; max-width: 0 !important; overflow: hidden; }
+    .nav-tooltip { pointer-events: none; transition: opacity .15s; }
+    select { appearance: none; }
+    .shimmer { background: linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size: 800px 100%; animation: shimmer 1.4s infinite; }
+    @keyframes shimmer { 0%{background-position:-400px 0}100%{background-position:400px 0} }
+    .shortlist-pulse { animation: shortlistPop .3s cubic-bezier(.4,0,.2,1); }
+    @keyframes shortlistPop { 0%{transform:scale(1)} 50%{transform:scale(1.5)} 100%{transform:scale(1)} }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useContext, createContext, useCallback, useMemo, useRef, useEffect } = React;
+
+/* ═══════════════════════════════════════════════════════════
+   ICONS (Lucide-style SVG)
+═══════════════════════════════════════════════════════════ */
+const Icon = ({ name, size = 16, color = 'currentColor', className = '' }) => {
+  const paths = {
+    grid:         <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
+    folder:       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>,
+    search2:      <><circle cx="11" cy="11" r="7"/><path strokeLinecap="round" d="m21 21-4.35-4.35"/><path strokeLinecap="round" d="M8 11h6M11 8v6"/></>,
+    calendar:     <><rect x="3" y="4" width="18" height="18" rx="2"/><path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18"/></>,
+    document:     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>,
+    bell:         <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>,
+    user:         <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>,
+    users:        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>,
+    settings:     <><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></>,
+    chart:        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>,
+    plus:         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/>,
+    close:        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>,
+    chevDown:     <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>,
+    chevRight:    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>,
+    search:       <><circle cx="11" cy="11" r="8"/><path strokeLinecap="round" d="m21 21-4-4"/></>,
+    filter:       <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>,
+    download:     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>,
+    play:         <><circle cx="12" cy="12" r="10"/><path strokeLinecap="round" strokeLinejoin="round" d="M10 8l6 4-6 4V8z"/></>,
+    star:         <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>,
+    starFill:     <path fill="currentColor" d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>,
+    menu:         <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16"/>,
+    eye:          <><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></>,
+    editPen:      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>,
+    trash:        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>,
+    lock:         <><rect x="3" y="11" width="18" height="11" rx="2"/><path strokeLinecap="round" d="M7 11V7a5 5 0 0110 0v4"/></>,
+    checkCircle:  <><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></>,
+    info:         <><circle cx="12" cy="12" r="10"/><path strokeLinecap="round" d="M12 16v-4M12 8h.01"/></>,
+    pin:          <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>,
+    listView:     <path strokeLinecap="round" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>,
+    share:        <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>,
+    upload:       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>,
+    fileJson:     <><rect x="4" y="2" width="16" height="20" rx="2"/><path strokeLinecap="round" d="M8 10h8M8 14h8M8 18h4"/></>,
+  };
+  const strokePaths = ['grid','folder','search2','calendar','document','bell','user','users','settings','chart','plus','close','chevDown','chevRight','search','filter','download','play','star','menu','eye','editPen','trash','lock','checkCircle','info','pin','listView','share','upload','fileJson'];
+  const isFill = !strokePaths.includes(name);
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={isFill ? color : 'none'}
+      stroke={isFill ? 'none' : color} strokeWidth="2" className={className}>
+      {paths[name] || null}
+    </svg>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   DEXIE.JS DATABASE — IndexedDB Persistence Layer
+═══════════════════════════════════════════════════════════ */
+const db = new Dexie('CastingHubDB');
+db.version(1).stores({
+  talents: '++id, name, age, gender, loc, union, status, *skills, eth, eye, rate, rating',
+  meta: 'key'
+});
+
+// Seed data — inserted only when DB is first created
+const SEED_TALENT = [
+  { name:'Mia Chen',        age:28, gender:'female', loc:'la',  union:'sag',     status:'available', skills:['Acting','Dancing','Runway'],          rating:4.9, credits:12, img:'https://randomuser.me/api/portraits/women/44.jpg', eth:'asian',        eye:'brown', rate:3200, recentCredit:'Horizon S2 — Netflix' },
+  { name:'James Harlow',    age:34, gender:'male',   loc:'nyc', union:'equity',  status:'hold',      skills:['Acting','Voice-Over'],                rating:4.7, credits:21, img:'https://randomuser.me/api/portraits/men/32.jpg',   eth:'caucasian',    eye:'blue',  rate:4500, recentCredit:'The Crown — BBC' },
+  { name:'Sofia Reyes',     age:24, gender:'female', loc:'la',  union:'nonunion',status:'available', skills:['Dancing','Commercial','Singing'],      rating:4.5, credits:6,  img:'https://randomuser.me/api/portraits/women/68.jpg', eth:'hispanic',     eye:'brown', rate:1800, recentCredit:'Nike Campaign 2024' },
+  { name:'Marcus Webb',     age:41, gender:'male',   loc:'atl', union:'sag',     status:'busy',      skills:['Acting','Stunts'],                    rating:4.8, credits:33, img:'https://randomuser.me/api/portraits/men/75.jpg',   eth:'black',        eye:'brown', rate:5500, recentCredit:'Fast & Furious 11' },
+  { name:'Ava Kowalski',    age:22, gender:'female', loc:'chi', union:'nonunion',status:'available', skills:['Commercial','Runway'],                rating:4.3, credits:4,  img:'https://randomuser.me/api/portraits/women/17.jpg', eth:'caucasian',    eye:'green', rate:1500, recentCredit:'H&M Summer 2024' },
+  { name:'Devon Clarke',    age:30, gender:'male',   loc:'la',  union:'sag',     status:'available', skills:['Acting','Improv','Voice-Over'],       rating:4.6, credits:15, img:'https://randomuser.me/api/portraits/men/18.jpg',   eth:'black',        eye:'brown', rate:3800, recentCredit:'Abbott Elementary' },
+  { name:'Priya Nair',      age:27, gender:'female', loc:'nyc', union:'sag',     status:'available', skills:['Acting','Dancing','Singing'],         rating:4.9, credits:9,  img:'https://randomuser.me/api/portraits/women/91.jpg', eth:'southasian',   eye:'brown', rate:3000, recentCredit:'Bridgerton S4' },
+  { name:'Ethan Park',      age:25, gender:'male',   loc:'la',  union:'nonunion',status:'hold',      skills:['Acting','Commercial'],                rating:4.2, credits:5,  img:'https://randomuser.me/api/portraits/men/61.jpg',   eth:'asian',        eye:'brown', rate:2000, recentCredit:'Samsung Campaign' },
+  { name:'Camille Dubois',  age:32, gender:'female', loc:'nyc', union:'equity',  status:'available', skills:['Acting','Runway','Voice-Over'],       rating:4.7, credits:18, img:'https://randomuser.me/api/portraits/women/30.jpg', eth:'caucasian',    eye:'hazel', rate:4200, recentCredit:'Death of a Salesman' },
+  { name:'Tariq Johnson',   age:38, gender:'male',   loc:'la',  union:'sag',     status:'available', skills:['Acting','Stunts','Improv'],           rating:4.8, credits:27, img:'https://randomuser.me/api/portraits/men/46.jpg',   eth:'black',        eye:'brown', rate:4800, recentCredit:'Black Panther 3' },
+  { name:'Yuki Tanaka',     age:23, gender:'female', loc:'la',  union:'nonunion',status:'available', skills:['Commercial','Dancing','Singing'],     rating:4.4, credits:3,  img:'https://randomuser.me/api/portraits/women/55.jpg', eth:'asian',        eye:'brown', rate:1600, recentCredit:'Sony Walkman Revival' },
+  { name:'Luca Romano',     age:29, gender:'male',   loc:'aus', union:'nonunion',status:'available', skills:['Acting','Commercial'],                rating:4.1, credits:7,  img:'https://randomuser.me/api/portraits/men/80.jpg',   eth:'caucasian',    eye:'blue',  rate:2200, recentCredit:'Dell Tech Spot 2024' },
+  { name:'Amara Osei',      age:26, gender:'female', loc:'atl', union:'sag',     status:'busy',      skills:['Acting','Dancing','Runway'],          rating:4.9, credits:14, img:'https://randomuser.me/api/portraits/women/37.jpg', eth:'black',        eye:'brown', rate:3500, recentCredit:'Atlanta FX S4' },
+  { name:'Tyler Brooks',    age:44, gender:'male',   loc:'la',  union:'afm',     status:'available', skills:['Voice-Over','Singing'],               rating:4.6, credits:22, img:'https://randomuser.me/api/portraits/men/9.jpg',    eth:'caucasian',    eye:'gray',  rate:3300, recentCredit:'Disney+ Promo' },
+  { name:'Leila Ahmadi',    age:31, gender:'female', loc:'nyc', union:'sag',     status:'available', skills:['Acting','Voice-Over'],                rating:4.5, credits:16, img:'https://randomuser.me/api/portraits/women/49.jpg', eth:'middleeastern',eye:'green', rate:3700, recentCredit:'Law & Order SVU' },
+  { name:'Kai Nakamura',    age:20, gender:'male',   loc:'la',  union:'nonunion',status:'available', skills:['Dancing','Commercial','Runway'],      rating:4.0, credits:2,  img:'https://randomuser.me/api/portraits/men/40.jpg',   eth:'asian',        eye:'brown', rate:1200, recentCredit:'Prada Campaign 2025' },
+  { name:'Naomi Adeyemi',   age:35, gender:'female', loc:'la',  union:'sag',     status:'hold',      skills:['Acting','Stunts'],                   rating:4.7, credits:24, img:'https://randomuser.me/api/portraits/women/24.jpg', eth:'black',        eye:'brown', rate:5000, recentCredit:'Mission Impossible 8' },
+  { name:'Chris Moreau',    age:37, gender:'male',   loc:'chi', union:'equity',  status:'available', skills:['Acting','Improv','Singing'],          rating:4.4, credits:13, img:'https://randomuser.me/api/portraits/men/67.jpg',   eth:'caucasian',    eye:'blue',  rate:3100, recentCredit:'Chicago Med S9' },
+  { name:'Isabelle Grant',  age:21, gender:'female', loc:'aus', union:'nonunion',status:'available', skills:['Commercial','Runway','Dancing'],      rating:4.2, credits:2,  img:'https://randomuser.me/api/portraits/women/72.jpg', eth:'caucasian',    eye:'hazel', rate:1400, recentCredit:'Zara Global 2025' },
+  { name:'Donovan Miles',   age:33, gender:'male',   loc:'la',  union:'sag',     status:'available', skills:['Acting','Voice-Over','Improv'],       rating:4.9, credits:30, img:'https://randomuser.me/api/portraits/men/22.jpg',   eth:'black',        eye:'brown', rate:4600, recentCredit:'Succession Finale' },
+  { name:'Hana Sato',       age:25, gender:'female', loc:'la',  union:'nonunion',status:'available', skills:['Runway','Commercial','Dancing'],      rating:4.3, credits:5,  img:'https://randomuser.me/api/portraits/women/82.jpg', eth:'asian',        eye:'brown', rate:1900, recentCredit:'Valentino RTW 2025' },
+  { name:'Reggie Thornton', age:48, gender:'male',   loc:'nyc', union:'equity',  status:'busy',      skills:['Acting','Voice-Over'],                rating:4.8, credits:41, img:'https://randomuser.me/api/portraits/men/55.jpg',   eth:'black',        eye:'brown', rate:6000, recentCredit:'Hamilton Revival' },
+  { name:'Valentina Cruz',  age:29, gender:'female', loc:'la',  union:'sag',     status:'available', skills:['Acting','Dancing','Singing','Runway'],rating:4.9, credits:11, img:'https://randomuser.me/api/portraits/women/1.jpg',  eth:'hispanic',     eye:'brown', rate:3400, recentCredit:'Encanto 2' },
+  { name:'Finn O\'Malley',  age:26, gender:'male',   loc:'chi', union:'nonunion',status:'available', skills:['Acting','Stunts','Commercial'],       rating:4.3, credits:6,  img:'https://randomuser.me/api/portraits/men/12.jpg',   eth:'caucasian',    eye:'green', rate:2100, recentCredit:'Chicago Fire S13' },
+];
+
+/* ═══════════════════════════════════════════════════════════
+   TALENT SERVICE — Unified DB Interface
+═══════════════════════════════════════════════════════════ */
+const TalentService = {
+  // Initialize DB: seed if empty
+  async init() {
+    const count = await db.talents.count();
+    if (count === 0) {
+      await db.talents.bulkAdd(SEED_TALENT);
+      console.log('[TalentService] Seeded DB with', SEED_TALENT.length, 'records');
+    }
+    return db.talents.count();
+  },
+
+  // Read all talents
+  async getAll() {
+    return db.talents.toArray();
+  },
+
+  // Get single talent by ID
+  async getById(id) {
+    return db.talents.get(id);
+  },
+
+  // Add a new talent
+  async add(talent) {
+    const id = await db.talents.add(talent);
+    return id;
+  },
+
+  // Update an existing talent (partial)
+  async update(id, changes) {
+    await db.talents.update(id, changes);
+  },
+
+  // Delete a talent
+  async remove(id) {
+    await db.talents.delete(id);
+  },
+
+  // Bulk import (overwrite all)
+  async bulkImport(jsonArray) {
+    await db.talents.clear();
+    await db.talents.bulkAdd(jsonArray);
+    return jsonArray.length;
+  },
+
+  // Export all as JSON
+  async exportAll() {
+    return db.talents.toArray();
+  },
+
+  // Get total count
+  async count() {
+    return db.talents.count();
+  }
+};
+
+/* Custom hook: live-sync from IndexedDB */
+function useLiveTalent() {
+  const [talent, setTalent] = useState([]);
+  const [dbReady, setDbReady] = useState(false);
+  const [revision, setRevision] = useState(0);
+
+  // Force refresh
+  const refresh = useCallback(() => setRevision(r => r + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await TalentService.init();
+      if (!cancelled) {
+        const all = await TalentService.getAll();
+        setTalent(all);
+        setDbReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [revision]);
+
+  return { talent, dbReady, refresh };
+}
+
+const LOC_LABELS = { la:'Los Angeles', nyc:'New York', chi:'Chicago', atl:'Atlanta', aus:'Austin' };
+const UNION_LABELS = { sag:'SAG-AFTRA', afm:'AFM', equity:'AEA (Equity)', nonunion:'Non-Union' };
+
+/* ═══════════════════════════════════════════════════════════
+   CONTEXT
+═══════════════════════════════════════════════════════════ */
+const AppContext = createContext(null);
+
+function AppProvider({ children }) {
+  const { talent, dbReady, refresh } = useLiveTalent();
+  const [shortlist, setShortlist] = useState(new Set());
+  const [activeNav, setActiveNav] = useState('dashboard');
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState('grid');
+  const [sortBy, setSortBy] = useState('name');
+
+  // Filter state
+  const [search, setSearch] = useState('');
+  const [filterAvail, setFilterAvail] = useState([]);
+  const [filterGender, setFilterGender] = useState('all');
+  const [filterEth, setFilterEth] = useState([]);
+  const [filterSkills, setFilterSkills] = useState([]);
+  const [filterUnion, setFilterUnion] = useState([]);
+  const [filterLoc, setFilterLoc] = useState([]);
+  const [ageMin, setAgeMin] = useState(18);
+  const [ageMax, setAgeMax] = useState(65);
+  const [rateMax, setRateMax] = useState(10000);
+
+  // Modal state
+  const [talentModal, setTalentModal] = useState(null);
+  const [showAddTalent, setShowAddTalent] = useState(false);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2800);
+  }, []);
+
+  const toggleShortlist = useCallback((id) => {
+    setShortlist(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const addTalent = useCallback(async (t) => {
+    const newTalent = { ...t, credits: 0, rating: 4.0, recentCredit: 'Newly Added', img: `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name)}&background=0f172a&color=fff&size=400&bold=true` };
+    await TalentService.add(newTalent);
+    refresh();
+    showToast(`${t.name} added to IndexedDB!`);
+  }, [showToast, refresh]);
+
+  const removeTalent = useCallback(async (id) => {
+    await TalentService.remove(id);
+    refresh();
+    showToast('Talent removed from database');
+  }, [showToast, refresh]);
+
+  // Bulk import handler
+  const bulkImport = useCallback(async (jsonArray) => {
+    const count = await TalentService.bulkImport(jsonArray);
+    refresh();
+    showToast(`Imported ${count} records into IndexedDB!`);
+    return count;
+  }, [showToast, refresh]);
+
+  // Export handler
+  const exportAll = useCallback(async () => {
+    const data = await TalentService.exportAll();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'castinghub_talent_export.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`Exported ${data.length} records as JSON`);
+  }, [showToast]);
+
+  const clearFilters = useCallback(() => {
+    setSearch(''); setFilterAvail([]); setFilterGender('all'); setFilterEth([]);
+    setFilterSkills([]); setFilterUnion([]); setFilterLoc([]);
+    setAgeMin(18); setAgeMax(65); setRateMax(10000);
+  }, []);
+
+  const filteredTalent = useMemo(() => {
+    let data = talent.filter(t => {
+      if (search) {
+        const q = search.toLowerCase();
+        if (!t.name.toLowerCase().includes(q) && !t.skills.some(s => s.toLowerCase().includes(q))) return false;
+      }
+      if (t.age < ageMin || t.age > ageMax) return false;
+      if (t.rate > rateMax) return false;
+      if (filterAvail.length && !filterAvail.includes(t.status)) return false;
+      if (filterGender !== 'all' && t.gender !== filterGender) return false;
+      if (filterEth.length && !filterEth.includes(t.eth)) return false;
+      if (filterSkills.length && !filterSkills.some(s => t.skills.includes(s))) return false;
+      if (filterUnion.length && !filterUnion.includes(t.union)) return false;
+      if (filterLoc.length && !filterLoc.includes(t.loc)) return false;
+      return true;
+    });
+    if (sortBy === 'name')   data.sort((a,b) => a.name.localeCompare(b.name));
+    if (sortBy === 'rating') data.sort((a,b) => b.rating - a.rating);
+    if (sortBy === 'age')    data.sort((a,b) => a.age - b.age);
+    if (sortBy === 'recent') data.sort((a,b) => b.id - a.id);
+    return data;
+  }, [talent, search, ageMin, ageMax, rateMax, filterAvail, filterGender, filterEth, filterSkills, filterUnion, filterLoc, sortBy]);
+
+  const activeFilters = useMemo(() => {
+    const tags = [];
+    filterAvail.forEach(v => tags.push({ key: 'avail:'+v, label: v === 'available' ? 'Available' : v === 'hold' ? 'On Hold' : 'Booked', remove: () => setFilterAvail(p => p.filter(x => x !== v)) }));
+    if (filterGender !== 'all') tags.push({ key: 'gender', label: filterGender.charAt(0).toUpperCase()+filterGender.slice(1), remove: () => setFilterGender('all') });
+    filterEth.forEach(v => tags.push({ key: 'eth:'+v, label: v, remove: () => setFilterEth(p => p.filter(x => x !== v)) }));
+    filterSkills.forEach(v => tags.push({ key: 'skill:'+v, label: v, remove: () => setFilterSkills(p => p.filter(x => x !== v)) }));
+    filterUnion.forEach(v => tags.push({ key: 'union:'+v, label: UNION_LABELS[v] || v, remove: () => setFilterUnion(p => p.filter(x => x !== v)) }));
+    filterLoc.forEach(v => tags.push({ key: 'loc:'+v, label: LOC_LABELS[v] || v, remove: () => setFilterLoc(p => p.filter(x => x !== v)) }));
+    if (ageMin !== 18 || ageMax !== 65) tags.push({ key: 'age', label: `Age ${ageMin}–${ageMax}`, remove: () => { setAgeMin(18); setAgeMax(65); } });
+    if (rateMax !== 10000) tags.push({ key: 'rate', label: `≤ $${rateMax.toLocaleString()}/day`, remove: () => setRateMax(10000) });
+    return tags;
+  }, [filterAvail, filterGender, filterEth, filterSkills, filterUnion, filterLoc, ageMin, ageMax, rateMax]);
+
+  return (
+    <AppContext.Provider value={{
+      talent, filteredTalent, shortlist, toggleShortlist, addTalent, removeTalent,
+      bulkImport, exportAll, dbReady,
+      activeNav, setActiveNav, sidebarExpanded, setSidebarExpanded,
+      viewMode, setViewMode, sortBy, setSortBy,
+      search, setSearch, filterAvail, setFilterAvail, filterGender, setFilterGender,
+      filterEth, setFilterEth, filterSkills, setFilterSkills, filterUnion, setFilterUnion,
+      filterLoc, setFilterLoc, ageMin, setAgeMin, ageMax, setAgeMax,
+      rateMax, setRateMax, clearFilters, activeFilters,
+      talentModal, setTalentModal, showAddTalent, setShowAddTalent,
+      showNewProject, setShowNewProject, toast, showToast,
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════════════ */
+const StatusBadge = ({ status }) => {
+  const cfg = {
+    available: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    hold:      'bg-amber-50 text-amber-700 border border-amber-200',
+    busy:      'bg-red-50 text-red-600 border border-red-200',
+  };
+  const label = { available: 'Available', hold: 'On Hold', busy: 'Booked' };
+  return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg[status] || cfg.available}`}>{label[status] || status}</span>;
+};
+
+const StatusDot = ({ status }) => {
+  const c = { available: 'bg-emerald-400', hold: 'bg-amber-400', busy: 'bg-red-400' };
+  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c[status] || 'bg-slate-300'}`} />;
+};
+
+const UnionBadge = ({ union }) => {
+  const short = { sag:'SAG', afm:'AFM', equity:'AEA', nonunion:'Non' };
+  return <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 uppercase tracking-wide">{short[union] || union}</span>;
+};
+
+const SkillTag = ({ skill }) => (
+  <span className="inline-flex items-center px-2 py-0.5 bg-navy-50 text-navy-800 rounded-full text-[10px] font-600">{skill}</span>
+);
+
+const StarRating = ({ rating }) => (
+  <span className="flex items-center gap-1">
+    <Icon name="starFill" size={13} color="#f59e0b" />
+    <span className="text-[12px] font-700 text-slate-700">{rating}</span>
+  </span>
+);
+
+function useToggleArray(state, setState) {
+  return useCallback((val) => {
+    setState(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]);
+  }, [setState]);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SIDEBAR COMPONENT
+═══════════════════════════════════════════════════════════ */
+function Sidebar() {
+  const { activeNav, setActiveNav, sidebarExpanded, setSidebarExpanded, shortlist } = useContext(AppContext);
+  const navItems = [
+    { id:'dashboard', icon:'grid',     label:'Dashboard' },
+    { id:'projects',  icon:'folder',   label:'Projects',   badge: 3 },
+    { id:'scout',     icon:'search2',  label:'Talent Scout' },
+    { id:'schedule',  icon:'calendar', label:'Schedule' },
+    { id:'submissions',icon:'document',label:'Submissions', badge: 7 },
+    { id:'analytics', icon:'chart',    label:'Analytics' },
+  ];
+  return (
+    <aside
+      className={`flex flex-col bg-navy-900 h-full flex-shrink-0 overflow-hidden z-20 transition-all duration-300 ${sidebarExpanded ? 'w-52' : 'w-16'}`}
+    >
+      {/* Logo */}
+      <div className="flex items-center justify-center h-14 border-b border-white/10 px-3 flex-shrink-0">
+        <div className="w-8 h-8 bg-white/15 rounded-lg flex items-center justify-center flex-shrink-0">
+          <Icon name="users" size={16} color="white" />
+        </div>
+        {sidebarExpanded && <span className="ml-2.5 font-800 text-white text-sm tracking-tight whitespace-nowrap overflow-hidden" style={{opacity:sidebarExpanded?1:0,transition:'opacity .2s'}}>CastingHub</span>}
+      </div>
+
+      {/* Nav */}
+      <nav className="flex flex-col gap-0.5 pt-2 px-2 flex-1 overflow-y-auto">
+        {navItems.map(item => (
+          <NavItem key={item.id} item={item} active={activeNav === item.id}
+            expanded={sidebarExpanded} onClick={() => setActiveNav(item.id)} />
+        ))}
+      </nav>
+
+      {/* Divider */}
+      <div className="border-t border-white/10 mx-3" />
+
+      {/* Bottom items */}
+      <div className="flex flex-col gap-0.5 px-2 py-2">
+        <NavItem item={{ id:'settings', icon:'settings', label:'Settings' }}
+          active={activeNav === 'settings'} expanded={sidebarExpanded}
+          onClick={() => setActiveNav('settings')} />
+      </div>
+
+      {/* Profile snippet */}
+      <div className="border-t border-white/10 p-3 flex items-center gap-2.5">
+        <img
+          src="https://ui-avatars.com/api/?name=Sarah+Kendall&background=4f5fdd&color=fff&size=64&bold=true"
+          className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+          alt="admin"
+        />
+        {sidebarExpanded && (
+          <div className="overflow-hidden">
+            <p className="text-xs font-700 text-white truncate leading-tight">Sarah Kendall</p>
+            <p className="text-[10px] text-white/50 truncate">Senior Agent</p>
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function NavItem({ item, active, expanded, onClick }) {
+  const [showTip, setShowTip] = useState(false);
+  return (
+    <div className="relative" onMouseEnter={() => setShowTip(true)} onMouseLeave={() => setShowTip(false)}>
+      <button
+        onClick={onClick}
+        className={`w-full flex items-center h-10 px-2.5 rounded-xl transition-all gap-3 group
+          ${active ? 'bg-white/15 text-white' : 'text-white/55 hover:bg-white/10 hover:text-white/90'}`}
+      >
+        <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
+          <Icon name={item.icon} size={19} color="currentColor" />
+        </div>
+        <span className={`text-sm font-500 whitespace-nowrap overflow-hidden transition-all duration-200 ${expanded ? 'opacity-100 max-w-xs' : 'opacity-0 max-w-0'}`}>
+          {item.label}
+        </span>
+        {item.badge && (
+          <span className={`flex-shrink-0 ml-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[9px] font-800 rounded-full flex items-center justify-center px-1 border-2 border-navy-900 ${expanded ? '' : 'absolute top-1.5 right-1.5'}`}>
+            {item.badge}
+          </span>
+        )}
+      </button>
+      {!expanded && showTip && (
+        <div className="nav-tooltip absolute left-[72px] top-1/2 -translate-y-1/2 bg-navy-900 border border-white/10 text-white text-xs font-600 px-2.5 py-1 rounded-lg shadow-lg whitespace-nowrap z-50"
+          style={{opacity:showTip?1:0}}>
+          {item.label}
+          {item.badge && <span className="ml-1.5 bg-red-500 text-white text-[9px] font-800 rounded-full px-1">{item.badge}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FILTER PANEL COMPONENT
+═══════════════════════════════════════════════════════════ */
+function FilterPanel() {
+  const {
+    filterAvail, setFilterAvail, filterGender, setFilterGender,
+    filterEth, setFilterEth, filterSkills, setFilterSkills,
+    filterUnion, setFilterUnion, filterLoc, setFilterLoc,
+    ageMin, setAgeMin, ageMax, setAgeMax, rateMax, setRateMax,
+    clearFilters, activeFilters,
+  } = useContext(AppContext);
+
+  const toggleAvail = useToggleArray(filterAvail, setFilterAvail);
+  const toggleEth   = useToggleArray(filterEth, setFilterEth);
+  const toggleSkill = useToggleArray(filterSkills, setFilterSkills);
+  const toggleUnion = useToggleArray(filterUnion, setFilterUnion);
+  const toggleLoc   = useToggleArray(filterLoc, setFilterLoc);
+
+  const Section = ({ title, children }) => (
+    <div className="border-t border-slate-100 px-4 py-3.5">
+      <p className="text-[10px] font-700 uppercase tracking-widest text-slate-400 mb-2.5">{title}</p>
+      {children}
+    </div>
+  );
+
+  const CheckRow = ({ label, count, checked, onChange }) => (
+    <label className="flex items-center gap-2.5 cursor-pointer group py-0.5">
+      <input type="checkbox" className="custom-cb" checked={checked} onChange={onChange} />
+      <span className="text-[13px] text-slate-600 group-hover:text-slate-900 transition-colors flex-1">{label}</span>
+      {count !== undefined && <span className="text-[11px] text-slate-400">{count}</span>}
+    </label>
+  );
+
+  return (
+    <aside className="w-60 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 sticky top-0 bg-white z-10">
+        <div className="flex items-center gap-2">
+          <Icon name="filter" size={14} color="#0f172a" />
+          <span className="text-sm font-700 text-slate-800">Filters</span>
+        </div>
+        {activeFilters.length > 0 && (
+          <button onClick={clearFilters} className="text-xs text-navy-700 font-600 hover:underline transition-colors">
+            Clear all ({activeFilters.length})
+          </button>
+        )}
+      </div>
+
+      <div className="overflow-y-auto flex-1">
+        {/* Active filter tags */}
+        {activeFilters.length > 0 && (
+          <div className="px-4 py-3 border-b border-slate-100">
+            <div className="flex flex-wrap gap-1.5">
+              {activeFilters.map(f => (
+                <button key={f.key} onClick={f.remove}
+                  className="flex items-center gap-1 px-2 py-0.5 bg-navy-100 text-navy-800 rounded-full text-[11px] font-600 hover:bg-navy-200 transition-colors">
+                  {f.label}
+                  <Icon name="close" size={10} color="currentColor" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Availability */}
+        <Section title="Availability">
+          <div className="flex flex-col gap-1">
+            <CheckRow label="Available Now" count={124} checked={filterAvail.includes('available')} onChange={() => toggleAvail('available')} />
+            <CheckRow label="On Hold" count={38} checked={filterAvail.includes('hold')} onChange={() => toggleAvail('hold')} />
+            <CheckRow label="Booked Out" count={19} checked={filterAvail.includes('busy')} onChange={() => toggleAvail('busy')} />
+          </div>
+        </Section>
+
+        {/* Age Range */}
+        <Section title="Age Range">
+          <div className="space-y-3">
+            <div className="flex justify-between text-xs font-600 text-navy-700 mb-1">
+              <span>Min: {ageMin}</span>
+              <span>Max: {ageMax}</span>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 mb-1">Minimum Age</p>
+              <input type="range" min={18} max={70} value={ageMin}
+                onChange={e => setAgeMin(Math.min(+e.target.value, ageMax - 1))} />
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 mb-1">Maximum Age</p>
+              <input type="range" min={18} max={70} value={ageMax}
+                onChange={e => setAgeMax(Math.max(+e.target.value, ageMin + 1))} />
+            </div>
+          </div>
+        </Section>
+
+        {/* Gender */}
+        <Section title="Gender">
+          <div className="grid grid-cols-3 gap-1.5">
+            {['all','female','male'].map(g => (
+              <button key={g} onClick={() => setFilterGender(g)}
+                className={`text-xs py-1.5 rounded-lg border font-600 transition-all capitalize
+                  ${filterGender === g
+                    ? 'bg-navy-50 border-navy-700 text-navy-900'
+                    : 'border-slate-200 text-slate-500 hover:border-navy-300'}`}>
+                {g === 'all' ? 'All' : g.charAt(0).toUpperCase()+g.slice(1)}
+              </button>
+            ))}
+          </div>
+        </Section>
+
+        {/* Ethnicity */}
+        <Section title="Ethnicity">
+          <div className="flex flex-col gap-1">
+            {[['caucasian','Caucasian'],['hispanic','Hispanic / Latino'],['black','Black / African'],
+              ['asian','Asian'],['southasian','South Asian'],['middleeastern','Middle Eastern']].map(([v,l]) => (
+              <CheckRow key={v} label={l} checked={filterEth.includes(v)} onChange={() => toggleEth(v)} />
+            ))}
+          </div>
+        </Section>
+
+        {/* Skills */}
+        <Section title="Skills & Specialties">
+          <div className="flex flex-col gap-1">
+            {[['Acting',89],['Dancing',54],['Singing',42],['Stunts',17],
+              ['Voice-Over',31],['Commercial',66],['Runway',28],['Improv',22]].map(([s,c]) => (
+              <CheckRow key={s} label={s} count={c} checked={filterSkills.includes(s)} onChange={() => toggleSkill(s)} />
+            ))}
+          </div>
+        </Section>
+
+        {/* Union */}
+        <Section title="Union Status">
+          <div className="flex flex-col gap-1">
+            {[['sag','SAG-AFTRA',74],['afm','AFM',18],['equity','AEA (Equity)',29],['nonunion','Non-Union',60]].map(([v,l,c]) => (
+              <CheckRow key={v} label={l} count={c} checked={filterUnion.includes(v)} onChange={() => toggleUnion(v)} />
+            ))}
+          </div>
+        </Section>
+
+        {/* Location */}
+        <Section title="Location / Market">
+          <div className="flex flex-col gap-1">
+            {[['la','Los Angeles',88],['nyc','New York',61],['chi','Chicago',23],['atl','Atlanta',19],['aus','Austin',14]].map(([v,l,c]) => (
+              <CheckRow key={v} label={l} count={c} checked={filterLoc.includes(v)} onChange={() => toggleLoc(v)} />
+            ))}
+          </div>
+        </Section>
+
+        {/* Daily Rate */}
+        <Section title="Max Daily Rate">
+          <div>
+            <div className="text-right text-xs font-700 text-navy-700 mb-1.5">
+              Up to ${rateMax.toLocaleString()}
+            </div>
+            <input type="range" min={500} max={10000} step={100} value={rateMax}
+              onChange={e => setRateMax(+e.target.value)} />
+            <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+              <span>$500</span><span>$10,000</span>
+            </div>
+          </div>
+        </Section>
+
+        <div className="h-4" />
+      </div>
+    </aside>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOP BAR COMPONENT
+═══════════════════════════════════════════════════════════ */
+function TopBar() {
+  const { sidebarExpanded, setSidebarExpanded, search, setSearch, setShowAddTalent, setShowNewProject, shortlist } = useContext(AppContext);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+
+  useEffect(() => {
+    const close = () => setAvatarOpen(false);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
+
+  return (
+    <header className="h-14 flex items-center gap-3 px-4 bg-white border-b border-slate-200 z-30 flex-shrink-0">
+      {/* Sidebar toggle */}
+      <button onClick={() => setSidebarExpanded(p => !p)}
+        className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
+        <Icon name="menu" size={18} color="#64748b" />
+      </button>
+
+      {/* Logo */}
+      <div className="flex items-center gap-2 mr-2">
+        <div className="w-7 h-7 bg-navy-900 rounded-lg flex items-center justify-center">
+          <Icon name="users" size={14} color="white" />
+        </div>
+        <span className="font-800 text-navy-900 text-base tracking-tight">CastingHub</span>
+        <span className="text-[10px] font-600 text-slate-400 border border-slate-200 rounded px-1.5 py-0.5 ml-1">ADMIN</span>
+      </div>
+
+      {/* Search */}
+      <div className="flex-1 max-w-lg relative">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+          <Icon name="search" size={14} color="#94a3b8" />
+        </div>
+        <input
+          type="text"
+          placeholder="Search talent by name, skill, or look type…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full h-9 pl-9 pr-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-navy-400 focus:ring-2 focus:ring-navy-100 transition-all"
+        />
+        {search && (
+          <button onClick={() => setSearch('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <Icon name="close" size={14} color="currentColor" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1.5 ml-auto">
+        {/* New project */}
+        <button onClick={() => setShowNewProject(true)}
+          className="hidden lg:flex items-center gap-1.5 h-8 px-3 border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-600 rounded-lg transition-colors">
+          <Icon name="folder" size={13} color="currentColor" />
+          New Project
+        </button>
+
+        {/* Add talent */}
+        <button onClick={() => setShowAddTalent(true)}
+          className="flex items-center gap-1.5 h-8 px-3 bg-navy-900 hover:bg-navy-800 text-white text-xs font-700 rounded-lg transition-colors">
+          <Icon name="plus" size={13} color="white" />
+          Add Talent
+        </button>
+
+        {/* Shortlist */}
+        <div className="relative">
+          <button className="flex items-center gap-1.5 h-8 px-3 border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-600 rounded-lg transition-colors">
+            <Icon name="starFill" size={13} color="#f59e0b" />
+            <span>Shortlist</span>
+            <span className="min-w-[18px] h-[18px] bg-accent/10 text-accent text-[10px] font-800 rounded-full flex items-center justify-center px-1">
+              {shortlist.size}
+            </span>
+          </button>
+        </div>
+
+        {/* Notifications */}
+        <div className="relative">
+          <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
+            <Icon name="bell" size={17} color="#64748b" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border border-white" />
+          </button>
+        </div>
+
+        {/* Avatar */}
+        <div className="relative" onClick={e => e.stopPropagation()}>
+          <button onClick={() => setAvatarOpen(p => !p)}
+            className="flex items-center gap-2 pl-1 pr-2 h-8 rounded-lg hover:bg-slate-100 transition-colors">
+            <img src="https://ui-avatars.com/api/?name=Sarah+Kendall&background=0f172a&color=fff&size=64&bold=true"
+              className="w-7 h-7 rounded-full object-cover" alt="avatar" />
+            <div className="hidden sm:block text-left">
+              <p className="text-xs font-700 text-slate-700 leading-none">Sarah Kendall</p>
+              <p className="text-[10px] text-slate-400 leading-none mt-0.5">Senior Agent</p>
+            </div>
+            <Icon name="chevDown" size={12} color="#94a3b8" />
+          </button>
+
+          {avatarOpen && (
+            <div className="absolute right-0 top-[calc(100%+6px)] bg-white border border-slate-200 rounded-xl shadow-xl z-50 w-48 py-1">
+              {[['user','My Profile'],['settings','Settings']].map(([icon,label]) => (
+                <button key={label} className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left">
+                  <Icon name={icon} size={14} color="#94a3b8" /> {label}
+                </button>
+              ))}
+              <div className="my-1 border-t border-slate-100" />
+              <button className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors text-left">
+                <Icon name="close" size={14} color="#ef4444" /> Sign Out
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STATS BAR COMPONENT
+═══════════════════════════════════════════════════════════ */
+function StatsBar() {
+  const { talent, filteredTalent, shortlist, setShowNewProject } = useContext(AppContext);
+  const available = talent.filter(t => t.status === 'available').length;
+  const onHold    = talent.filter(t => t.status === 'hold').length;
+  const booked    = talent.filter(t => t.status === 'busy').length;
+  const avgRating = (talent.reduce((s,t) => s + t.rating, 0) / talent.length).toFixed(1);
+
+  const stats = [
+    { label:'Total Talent', value: talent.length, icon:'users', color:'text-navy-700', bg:'bg-navy-50' },
+    { label:'Available',    value: available,      icon:'checkCircle', color:'text-emerald-600', bg:'bg-emerald-50', dot:'bg-emerald-400' },
+    { label:'On Hold',      value: onHold,         icon:'info',       color:'text-amber-600',   bg:'bg-amber-50',   dot:'bg-amber-400' },
+    { label:'Booked Out',   value: booked,         icon:'lock',       color:'text-red-500',     bg:'bg-red-50',     dot:'bg-red-400' },
+    { label:'Avg Rating',   value: avgRating,      icon:'starFill',   color:'text-purple-600',  bg:'bg-purple-50' },
+  ];
+
+  return (
+    <div className="flex items-center gap-4 px-5 py-2.5 bg-white border-b border-slate-200 flex-shrink-0 overflow-x-auto">
+      {stats.map((s, i) => (
+        <React.Fragment key={s.label}>
+          {i > 0 && <div className="w-px h-7 bg-slate-200 flex-shrink-0" />}
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <div className={`w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center`}>
+              <Icon name={s.icon} size={15} color="currentColor" className={s.color} />
+            </div>
+            <div>
+              <p className={`text-lg font-800 text-slate-800 leading-none`}>{s.value}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5 font-500">{s.label}</p>
+            </div>
+          </div>
+        </React.Fragment>
+      ))}
+      <div className="flex-1" />
+      <button onClick={() => setShowNewProject(true)}
+        className="flex-shrink-0 flex items-center gap-2 h-7 px-3 bg-navy-50 border border-navy-200 rounded-lg text-xs text-navy-700 font-600 hover:bg-navy-100 transition-colors">
+        <Icon name="folder" size={12} color="#0f172a" />
+        <span>Create Project</span>
+        <span className="bg-amber-100 text-amber-700 text-[9px] font-800 rounded-full px-1.5 min-w-[18px] h-4 flex items-center justify-center">
+          {shortlist.size}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOOLBAR COMPONENT
+═══════════════════════════════════════════════════════════ */
+function Toolbar() {
+  const { filteredTalent, viewMode, setViewMode, sortBy, setSortBy, bulkImport, exportAll, showToast } = useContext(AppContext);
+  return (
+    <div className="flex items-center justify-between px-5 h-11 border-b border-slate-200 bg-white flex-shrink-0 gap-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-xs text-slate-400">Talent Database</span>
+        <Icon name="chevRight" size={12} color="#cbd5e1" />
+        <span className="text-xs font-700 text-slate-700">All Talent</span>
+        <span className="ml-1 text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5 flex-shrink-0">
+          {filteredTalent.length} result{filteredTalent.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        {/* Sort */}
+        <div className="relative">
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+            className="h-7 pl-2.5 pr-7 text-xs bg-white border border-slate-200 rounded-lg text-slate-600 cursor-pointer focus:outline-none focus:border-navy-400 transition-colors">
+            <option value="name">Sort: Name A–Z</option>
+            <option value="recent">Sort: Recently Added</option>
+            <option value="rating">Sort: Highest Rated</option>
+            <option value="age">Sort: Age</option>
+          </select>
+          <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+            <Icon name="chevDown" size={11} color="#94a3b8" />
+          </div>
+        </div>
+
+        {/* View toggle */}
+        <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
+          <button onClick={() => setViewMode('grid')}
+            className={`h-7 w-8 flex items-center justify-center transition-colors ${viewMode === 'grid' ? 'bg-navy-50 text-navy-700' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <Icon name="grid" size={13} color="currentColor" />
+          </button>
+          <button onClick={() => setViewMode('list')}
+            className={`h-7 w-8 flex items-center justify-center border-l border-slate-200 transition-colors ${viewMode === 'list' ? 'bg-navy-50 text-navy-700' : 'text-slate-400 hover:bg-slate-50'}`}>
+            <Icon name="listView" size={13} color="currentColor" />
+          </button>
+        </div>
+
+        {/* Import */}
+        <button onClick={() => {
+          const input = document.createElement('input');
+          input.type = 'file'; input.accept = '.json';
+          input.onchange = async (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const text = await file.text();
+            try {
+              const data = JSON.parse(text);
+              if (Array.isArray(data)) { await bulkImport(data); }
+              else { showToast('Invalid JSON: must be an array', 'error'); }
+            } catch(err) { showToast('Failed to parse JSON file', 'error'); }
+          };
+          input.click();
+        }} className="flex items-center gap-1.5 h-7 px-3 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 transition-colors">
+          <Icon name="upload" size={12} color="currentColor" />
+          Import
+        </button>
+
+        {/* Export */}
+        <button onClick={exportAll} className="flex items-center gap-1.5 h-7 px-3 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 transition-colors">
+          <Icon name="download" size={12} color="currentColor" />
+          Export
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TALENT CARD COMPONENT
+═══════════════════════════════════════════════════════════ */
+function TalentCard({ talent: t }) {
+  const { shortlist, toggleShortlist, setTalentModal } = useContext(AppContext);
+  const inShortlist = shortlist.has(t.id);
+  const [imgErr, setImgErr] = useState(false);
+
+  return (
+    <div className="talent-card bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:border-slate-200 flex flex-col cursor-default">
+      {/* Headshot */}
+      <div className="relative overflow-hidden group" style={{ aspectRatio:'3/4' }}>
+        <img
+          src={imgErr ? `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name)}&background=e8eaff&color=1a237e&size=400&bold=true` : t.img}
+          alt={t.name}
+          loading="lazy"
+          onError={() => setImgErr(true)}
+          className="w-full h-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
+        />
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+
+        {/* Top badges */}
+        <div className="absolute top-2 left-2 right-2 flex items-start justify-between">
+          <StatusBadge status={t.status} />
+          <button
+            onClick={() => toggleShortlist(t.id)}
+            className={`w-7 h-7 rounded-full backdrop-blur-sm flex items-center justify-center shadow-sm transition-all border ${inShortlist ? 'bg-accent text-white border-accent' : 'bg-white/90 text-slate-400 border-transparent hover:bg-white hover:text-accent'}`}
+            title={inShortlist ? 'Remove from shortlist' : 'Add to shortlist'}
+          >
+            <Icon name="starFill" size={14} color="currentColor" />
+          </button>
+        </div>
+
+        {/* Quick actions on hover */}
+        <div className="card-actions absolute bottom-2 left-2 right-2 flex items-center gap-1.5">
+          <button onClick={() => setTalentModal(t)}
+            className="flex-1 flex items-center justify-center gap-1 h-7 bg-white/95 backdrop-blur-sm rounded-lg text-[11px] font-700 text-navy-900 hover:bg-white transition-colors shadow-sm">
+            <Icon name="play" size={12} color="#0f172a" /> Reel
+          </button>
+          <button
+            className="w-7 h-7 bg-white/95 backdrop-blur-sm rounded-lg flex items-center justify-center text-slate-500 hover:bg-white hover:text-navy-900 transition-colors shadow-sm"
+            title="Download resume">
+            <Icon name="download" size={13} color="currentColor" />
+          </button>
+          <button onClick={() => setTalentModal(t)}
+            className="w-7 h-7 bg-white/95 backdrop-blur-sm rounded-lg flex items-center justify-center text-slate-500 hover:bg-white hover:text-navy-900 transition-colors shadow-sm"
+            title="View profile">
+            <Icon name="eye" size={13} color="currentColor" />
+          </button>
+        </div>
+      </div>
+
+      {/* Card body */}
+      <div className="px-3 py-2.5 flex flex-col gap-1.5">
+        <div className="flex items-start justify-between gap-1">
+          <div className="min-w-0">
+            <p className="text-sm font-700 text-slate-800 truncate leading-tight">{t.name}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{t.age} yrs &bull; {LOC_LABELS[t.loc] || t.loc}</p>
+          </div>
+          <UnionBadge union={t.union} />
+        </div>
+        <div className="flex items-center justify-between">
+          <StarRating rating={t.rating} />
+          <span className="text-[10px] text-slate-400">{t.credits} credits</span>
+        </div>
+        <div className="flex flex-wrap gap-1 pt-0.5">
+          {t.skills.slice(0, 3).map(s => <SkillTag key={s} skill={s} />)}
+          {t.skills.length > 3 && (
+            <span className="inline-flex items-center px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-600">+{t.skills.length - 3}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LIST ROW COMPONENT
+═══════════════════════════════════════════════════════════ */
+function TalentListRow({ talent: t }) {
+  const { shortlist, toggleShortlist, setTalentModal } = useContext(AppContext);
+  const inShortlist = shortlist.has(t.id);
+  const [imgErr, setImgErr] = useState(false);
+
+  return (
+    <div className="talent-card bg-white rounded-xl border border-slate-100 shadow-sm hover:border-slate-200 flex items-center gap-4 px-4 py-3">
+      <img
+        src={imgErr ? `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name)}&background=e8eaff&color=1a237e&size=120&bold=true` : t.img}
+        alt={t.name}
+        loading="lazy"
+        onError={() => setImgErr(true)}
+        className="w-12 h-12 rounded-xl object-cover object-top flex-shrink-0"
+      />
+      <div className="flex-1 min-w-0 grid items-center gap-4" style={{ gridTemplateColumns:'1.5fr 1.5fr 1fr 1fr' }}>
+        <div className="min-w-0">
+          <p className="text-sm font-700 text-slate-800 truncate">{t.name}</p>
+          <p className="text-[11px] text-slate-400">{t.age} yrs &bull; {LOC_LABELS[t.loc]}</p>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {t.skills.slice(0, 3).map(s => <SkillTag key={s} skill={s} />)}
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusDot status={t.status} />
+          <span className="text-xs text-slate-600">{t.status === 'available' ? 'Available' : t.status === 'hold' ? 'On Hold' : 'Booked'}</span>
+          <UnionBadge union={t.union} />
+        </div>
+        <div className="flex items-center gap-1">
+          <StarRating rating={t.rating} />
+          <span className="ml-2 text-[11px] text-slate-400">{t.credits} creds</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <button onClick={() => setTalentModal(t)}
+          className="h-7 px-2.5 flex items-center gap-1.5 border border-slate-200 rounded-lg text-xs text-slate-600 hover:bg-slate-50 hover:text-navy-900 transition-colors">
+          <Icon name="play" size={13} color="currentColor" /> Reel
+        </button>
+        <button className="h-7 px-2 border border-slate-200 rounded-lg text-slate-400 hover:text-navy-900 hover:bg-slate-50 transition-colors">
+          <Icon name="download" size={13} color="currentColor" />
+        </button>
+        <button onClick={() => toggleShortlist(t.id)}
+          className={`h-7 px-2 border rounded-lg transition-colors ${inShortlist ? 'bg-accent text-white border-accent' : 'border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-accent'}`}>
+          <Icon name="starFill" size={13} color="currentColor" />
+        </button>
+        <button onClick={() => setTalentModal(t)}
+          className="h-7 px-3 flex items-center gap-1.5 bg-navy-900 hover:bg-navy-800 rounded-lg text-xs text-white font-700 transition-colors">
+          View Profile
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TALENT GRID COMPONENT
+═══════════════════════════════════════════════════════════ */
+function TalentGrid() {
+  const { filteredTalent, viewMode, clearFilters } = useContext(AppContext);
+
+  if (filteredTalent.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+          <Icon name="search" size={28} color="#cbd5e1" />
+        </div>
+        <p className="text-sm font-700 text-slate-500">No talent matches your filters</p>
+        <p className="text-xs text-slate-400 mt-1">Try adjusting or clearing your search criteria</p>
+        <button onClick={clearFilters}
+          className="mt-4 text-xs text-navy-700 font-700 hover:underline">
+          Clear all filters
+        </button>
+      </div>
+    );
+  }
+
+  if (viewMode === 'list') {
+    return (
+      <div className="flex flex-col gap-2 p-5">
+        {filteredTalent.map(t => <TalentListRow key={t.id} talent={t} />)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))' }}>
+      {filteredTalent.map(t => <TalentCard key={t.id} talent={t} />)}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TALENT DETAIL MODAL COMPONENT
+═══════════════════════════════════════════════════════════ */
+function TalentDetailModal() {
+  const { talentModal, setTalentModal, shortlist, toggleShortlist } = useContext(AppContext);
+  if (!talentModal) return null;
+  const t = talentModal;
+  const inShortlist = shortlist.has(t.id);
+  const [imgErr, setImgErr] = useState(false);
+
+  const mockCredits = [
+    'Featured — Horizon TV Series (Netflix, 2024)',
+    'Lead — Brand Campaign, LVMH (2023)',
+    'Supporting — Stage Production, NYC (2023)',
+    'Principal — Indie Short Film, Sundance (2022)',
+  ];
+
+  return (
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={() => setTalentModal(null)}>
+      <div className="modal-panel bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex flex-col sm:flex-row overflow-hidden rounded-2xl">
+          {/* Left: headshot */}
+          <div className="sm:w-64 flex-shrink-0 relative">
+            <img
+              src={imgErr ? `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name)}&background=e8eaff&color=1a237e&size=600&bold=true` : t.img}
+              alt={t.name}
+              onError={() => setImgErr(true)}
+              className="w-full h-72 sm:h-full object-cover object-top"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+            <div className="absolute bottom-4 left-4"><StatusBadge status={t.status} /></div>
+          </div>
+
+          {/* Right: details */}
+          <div className="flex-1 p-6 overflow-y-auto">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-800 text-slate-900">{t.name}</h2>
+                <p className="text-sm text-slate-400 mt-0.5">
+                  {t.age} yrs &bull; {LOC_LABELS[t.loc]} &bull; {t.gender.charAt(0).toUpperCase()+t.gender.slice(1)}
+                </p>
+              </div>
+              <button onClick={() => setTalentModal(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors text-slate-400">
+                <Icon name="close" size={18} color="currentColor" />
+              </button>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3 mb-5">
+              {[['Rating', t.rating, 'bg-navy-50 text-navy-700'], ['Credits', t.credits, 'bg-emerald-50 text-emerald-700'], ['Day Rate', `$${t.rate.toLocaleString()}`, 'bg-amber-50 text-amber-700']].map(([l,v,c]) => (
+                <div key={l} className={`${c} rounded-xl p-3 text-center`}>
+                  <p className="text-lg font-800 leading-none">{v}</p>
+                  <p className="text-[11px] opacity-70 mt-1">{l}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Details grid */}
+            <div className="grid grid-cols-2 gap-4 mb-5">
+              {[['Union', UNION_LABELS[t.union] || t.union],['Ethnicity', t.eth.charAt(0).toUpperCase()+t.eth.slice(1)],['Eye Color', t.eye.charAt(0).toUpperCase()+t.eye.slice(1)],['Market', LOC_LABELS[t.loc]]].map(([l,v]) => (
+                <div key={l}>
+                  <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-1 font-700">{l}</p>
+                  <p className="text-sm font-600 text-slate-700">{v}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Skills */}
+            <div className="mb-5">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-2 font-700">Skills & Specialties</p>
+              <div className="flex flex-wrap gap-2">
+                {t.skills.map(s => <SkillTag key={s} skill={s} />)}
+              </div>
+            </div>
+
+            {/* Recent Credits */}
+            <div className="mb-5">
+              <p className="text-[10px] uppercase tracking-wider text-slate-400 mb-2 font-700">Recent Credits</p>
+              <div className="space-y-2">
+                {mockCredits.slice(0, Math.min(t.credits, 3) + 1).map((c, i) => (
+                  <div key={i} className="flex items-center gap-2.5 p-2.5 bg-slate-50 rounded-lg">
+                    <div className="w-1.5 h-1.5 rounded-full bg-navy-300 flex-shrink-0" />
+                    <p className="text-xs text-slate-600">{c}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+              <button className="flex-1 h-9 flex items-center justify-center gap-2 bg-navy-900 hover:bg-navy-800 text-white text-sm font-700 rounded-xl transition-colors">
+                <Icon name="play" size={15} color="white" /> View Reel
+              </button>
+              <button className="flex-1 h-9 flex items-center justify-center gap-2 border border-slate-200 text-slate-700 text-sm font-700 rounded-xl hover:bg-slate-50 transition-colors">
+                <Icon name="download" size={15} color="currentColor" /> Resume
+              </button>
+              <button
+                onClick={() => toggleShortlist(t.id)}
+                className={`h-9 px-4 flex items-center gap-1.5 border rounded-xl text-sm font-700 transition-colors ${inShortlist ? 'text-amber-600 bg-amber-50 border-amber-200 hover:bg-amber-100' : 'text-slate-500 border-slate-200 hover:bg-slate-50'}`}>
+                <Icon name="starFill" size={15} color="currentColor" />
+                {inShortlist ? 'Shortlisted' : 'Shortlist'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADD TALENT MODAL COMPONENT
+═══════════════════════════════════════════════════════════ */
+function AddTalentModal() {
+  const { showAddTalent, setShowAddTalent, addTalent } = useContext(AppContext);
+  const [form, setForm] = useState({ name:'', age:'', gender:'female', loc:'la', union:'nonunion', status:'available', skills:[], rate:'' });
+  const [errors, setErrors] = useState({});
+
+  if (!showAddTalent) return null;
+
+  const SKILLS_LIST = ['Acting','Dancing','Singing','Stunts','Voice-Over','Commercial','Runway','Improv'];
+
+  const toggleSkill = (s) => setForm(p => ({ ...p, skills: p.skills.includes(s) ? p.skills.filter(x => x !== s) : [...p.skills, s] }));
+
+  const validate = () => {
+    const e = {};
+    if (!form.name.trim()) e.name = 'Name is required';
+    if (!form.age || isNaN(form.age) || +form.age < 16 || +form.age > 80) e.age = 'Enter a valid age (16–80)';
+    if (!form.rate || isNaN(form.rate)) e.rate = 'Enter a valid rate';
+    if (form.skills.length === 0) e.skills = 'Select at least one skill';
+    return e;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    addTalent({ ...form, age: +form.age, rate: +form.rate, img: `https://ui-avatars.com/api/?name=${encodeURIComponent(form.name)}&background=e8eaff&color=1a237e&size=400&bold=true`, eth:'caucasian', eye:'brown' });
+    setShowAddTalent(false);
+    setForm({ name:'', age:'', gender:'female', loc:'la', union:'nonunion', status:'available', skills:[], rate:'' });
+    setErrors({});
+  };
+
+  const Field = ({ label, error, children }) => (
+    <div>
+      <label className="block text-xs font-700 text-slate-600 mb-1.5">{label}</label>
+      {children}
+      {error && <p className="text-[11px] text-red-500 mt-1">{error}</p>}
+    </div>
+  );
+
+  const inputCls = (err) => `w-full h-9 px-3 text-sm border rounded-lg outline-none transition-all focus:border-navy-400 focus:ring-2 focus:ring-navy-50 ${err ? 'border-red-300' : 'border-slate-200'}`;
+
+  return (
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={() => setShowAddTalent(false)}>
+      <div className="modal-panel bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-base font-800 text-slate-900">Add New Talent</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Create a new talent profile in the database</p>
+          </div>
+          <button onClick={() => setShowAddTalent(false)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors text-slate-400">
+            <Icon name="close" size={16} color="currentColor" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Full Name *" error={errors.name}>
+              <input className={inputCls(errors.name)} placeholder="e.g. Alex Rivera" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+            </Field>
+            <Field label="Age *" error={errors.age}>
+              <input className={inputCls(errors.age)} type="number" min="16" max="80" placeholder="28" value={form.age} onChange={e => setForm(p => ({ ...p, age: e.target.value }))} />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Gender">
+              <div className="relative">
+                <select className={inputCls()} value={form.gender} onChange={e => setForm(p => ({ ...p, gender: e.target.value }))}>
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                  <option value="nonbinary">Non-binary</option>
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"><Icon name="chevDown" size={12} color="#94a3b8" /></div>
+              </div>
+            </Field>
+            <Field label="Location">
+              <div className="relative">
+                <select className={inputCls()} value={form.loc} onChange={e => setForm(p => ({ ...p, loc: e.target.value }))}>
+                  {Object.entries(LOC_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"><Icon name="chevDown" size={12} color="#94a3b8" /></div>
+              </div>
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Union Status">
+              <div className="relative">
+                <select className={inputCls()} value={form.union} onChange={e => setForm(p => ({ ...p, union: e.target.value }))}>
+                  {Object.entries(UNION_LABELS).map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"><Icon name="chevDown" size={12} color="#94a3b8" /></div>
+              </div>
+            </Field>
+            <Field label="Availability">
+              <div className="relative">
+                <select className={inputCls()} value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+                  <option value="available">Available Now</option>
+                  <option value="hold">On Hold</option>
+                  <option value="busy">Booked Out</option>
+                </select>
+                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"><Icon name="chevDown" size={12} color="#94a3b8" /></div>
+              </div>
+            </Field>
+          </div>
+
+          <Field label="Daily Rate ($) *" error={errors.rate}>
+            <input className={inputCls(errors.rate)} type="number" min="100" placeholder="2500" value={form.rate} onChange={e => setForm(p => ({ ...p, rate: e.target.value }))} />
+          </Field>
+
+          <Field label="Skills * (select all that apply)" error={errors.skills}>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {SKILLS_LIST.map(s => (
+                <button type="button" key={s} onClick={() => toggleSkill(s)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-600 border transition-all ${form.skills.includes(s) ? 'bg-navy-900 text-white border-navy-900' : 'border-slate-200 text-slate-500 hover:border-navy-300 hover:text-navy-700'}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          <div className="flex items-center gap-3 pt-2">
+            <button type="button" onClick={() => setShowAddTalent(false)}
+              className="flex-1 h-10 border border-slate-200 rounded-xl text-sm font-700 text-slate-600 hover:bg-slate-50 transition-colors">
+              Cancel
+            </button>
+            <button type="submit"
+              className="flex-1 h-10 bg-navy-900 hover:bg-navy-800 rounded-xl text-sm font-700 text-white transition-colors flex items-center justify-center gap-2">
+              <Icon name="plus" size={15} color="white" />
+              Add to Database
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NEW PROJECT MODAL COMPONENT
+═══════════════════════════════════════════════════════════ */
+function NewProjectModal() {
+  const { showNewProject, setShowNewProject, shortlist, talent, toggleShortlist, showToast } = useContext(AppContext);
+  const [step, setStep] = useState(1);
+  const [form, setForm] = useState({ title:'', type:'film', studio:'', description:'', deadline:'', rate:'' });
+  const [errors, setErrors] = useState({});
+
+  if (!showNewProject) return null;
+
+  const shortlisted = talent.filter(t => shortlist.has(t.id));
+
+  const validate = () => {
+    const e = {};
+    if (!form.title.trim()) e.title = 'Project title is required';
+    if (!form.studio.trim()) e.studio = 'Studio / client is required';
+    return e;
+  };
+
+  const handleCreate = () => {
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); return; }
+    setStep(2);
+  };
+
+  const handleFinish = () => {
+    showToast(`Project "${form.title}" created with ${shortlisted.length} talent!`);
+    setShowNewProject(false);
+    setStep(1);
+    setForm({ title:'', type:'film', studio:'', description:'', deadline:'', rate:'' });
+    setErrors({});
+  };
+
+  const inputCls = (err) => `w-full h-9 px-3 text-sm border rounded-lg outline-none transition-all focus:border-navy-400 focus:ring-2 focus:ring-navy-50 ${err ? 'border-red-300' : 'border-slate-200'}`;
+
+  return (
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={() => { setShowNewProject(false); setStep(1); }}>
+      <div className="modal-panel bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-navy-100 rounded-xl flex items-center justify-center">
+              <Icon name="folder" size={18} color="#0f172a" />
+            </div>
+            <div>
+              <h2 className="text-base font-800 text-slate-900">New Casting Project</h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                {[1, 2].map(n => (
+                  <div key={n} className={`h-1.5 rounded-full transition-all ${n === step ? 'w-6 bg-accent' : n < step ? 'w-3 bg-emerald-400' : 'w-3 bg-slate-200'}`} />
+                ))}
+                <span className="text-[10px] text-slate-400 ml-1">Step {step} of 2</span>
+              </div>
+            </div>
+          </div>
+          <button onClick={() => { setShowNewProject(false); setStep(1); }}
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors text-slate-400">
+            <Icon name="close" size={16} color="currentColor" />
+          </button>
+        </div>
+
+        {/* Step 1: Project Details */}
+        {step === 1 && (
+          <div className="px-6 py-5 space-y-4">
+            <p className="text-sm font-600 text-slate-500 -mt-1">Enter the casting call details</p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="block text-xs font-700 text-slate-600 mb-1.5">Project Title *</label>
+                <input className={inputCls(errors.title)} placeholder="e.g. Horizon — Season 3 Lead Role"
+                  value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
+                {errors.title && <p className="text-[11px] text-red-500 mt-1">{errors.title}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-700 text-slate-600 mb-1.5">Production Type</label>
+                <div className="relative">
+                  <select className={inputCls()} value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}>
+                    {[['film','Feature Film'],['tv','TV Series'],['commercial','Commercial'],['stage','Stage / Theater'],['voiceover','Voice-Over'],['print','Print / Editorial']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                  <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"><Icon name="chevDown" size={12} color="#94a3b8" /></div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-700 text-slate-600 mb-1.5">Studio / Client *</label>
+                <input className={inputCls(errors.studio)} placeholder="e.g. Netflix, BBDO, Paramount"
+                  value={form.studio} onChange={e => setForm(p => ({ ...p, studio: e.target.value }))} />
+                {errors.studio && <p className="text-[11px] text-red-500 mt-1">{errors.studio}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-700 text-slate-600 mb-1.5">Submission Deadline</label>
+                <input className={inputCls()} type="date" value={form.deadline}
+                  onChange={e => setForm(p => ({ ...p, deadline: e.target.value }))} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-700 text-slate-600 mb-1.5">Offered Day Rate ($)</label>
+                <input className={inputCls()} type="number" placeholder="3500"
+                  value={form.rate} onChange={e => setForm(p => ({ ...p, rate: e.target.value }))} />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs font-700 text-slate-600 mb-1.5">Role Description</label>
+                <textarea className={`${inputCls()} h-20 py-2 resize-none`}
+                  placeholder="Describe the role requirements, physical type, skills needed…"
+                  value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button onClick={() => { setShowNewProject(false); setStep(1); }}
+                className="flex-1 h-10 border border-slate-200 rounded-xl text-sm font-700 text-slate-600 hover:bg-slate-50 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleCreate}
+                className="flex-1 h-10 bg-navy-900 hover:bg-navy-800 rounded-xl text-sm font-700 text-white transition-colors flex items-center justify-center gap-2">
+                Next: Review Shortlist
+                <Icon name="chevRight" size={15} color="white" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Shortlist Review */}
+        {step === 2 && (
+          <div className="px-6 py-5">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-sm font-600 text-slate-500">Shortlisted talent for</p>
+                <p className="font-800 text-slate-900">{form.title}</p>
+                <p className="text-xs text-slate-400">{form.studio}</p>
+              </div>
+              <span className="bg-navy-50 text-navy-700 text-sm font-700 px-3 py-1 rounded-full border border-navy-200">
+                {shortlisted.length} talent
+              </span>
+            </div>
+
+            {shortlisted.length === 0 ? (
+              <div className="text-center py-12 bg-slate-50 rounded-xl">
+                <Icon name="starFill" size={32} color="#e2e8f0" />
+                <p className="text-sm font-600 text-slate-400 mt-3">No talent shortlisted yet</p>
+                <p className="text-xs text-slate-400 mt-1">Go back to the dashboard and click the ★ icon on talent cards</p>
+                <button onClick={() => setStep(1)}
+                  className="mt-3 text-xs text-navy-700 font-700 hover:underline">
+                  ← Back to project details
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {shortlisted.map(t => (
+                  <div key={t.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <img src={t.img} alt={t.name}
+                      className="w-10 h-10 rounded-xl object-cover object-top flex-shrink-0"
+                      onError={e => { e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(t.name)}&background=e8eaff&color=1a237e&size=80&bold=true`; }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-700 text-slate-800">{t.name}</p>
+                      <p className="text-[11px] text-slate-400">{t.age} yrs • {LOC_LABELS[t.loc]} • {UNION_LABELS[t.union]}</p>
+                    </div>
+                    <StatusBadge status={t.status} />
+                    <StarRating rating={t.rating} />
+                    <button onClick={() => toggleShortlist(t.id)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
+                      title="Remove from shortlist">
+                      <Icon name="trash" size={14} color="currentColor" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 pt-5 border-t border-slate-100 mt-4">
+              <button onClick={() => setStep(1)}
+                className="flex items-center gap-1.5 h-10 px-5 border border-slate-200 rounded-xl text-sm font-700 text-slate-600 hover:bg-slate-50 transition-colors">
+                ← Back
+              </button>
+              <button onClick={handleFinish}
+                className="flex-1 h-10 bg-navy-900 hover:bg-navy-800 rounded-xl text-sm font-700 text-white transition-colors flex items-center justify-center gap-2">
+                <Icon name="checkCircle" size={15} color="white" />
+                Create Project &amp; Submit
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOAST COMPONENT
+═══════════════════════════════════════════════════════════ */
+function Toast() {
+  const { toast } = useContext(AppContext);
+  if (!toast) return null;
+  return (
+    <div className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 bg-slate-900 text-white pl-4 pr-5 py-3 rounded-xl shadow-2xl text-sm font-600 max-w-sm"
+      style={{ animation: 'slideUp .2s cubic-bezier(.4,0,.2,1)' }}>
+      <div className="w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+        <Icon name="checkCircle" size={14} color="white" />
+      </div>
+      {toast.msg}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ROOT APP
+═══════════════════════════════════════════════════════════ */
+function App() {
+  return (
+    <AppProvider>
+      <div className="h-screen flex flex-col overflow-hidden bg-slate-50" style={{ fontFamily:"'Inter',sans-serif" }}>
+        <TopBar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex flex-1 overflow-hidden">
+            <FilterPanel />
+            <main className="flex flex-col flex-1 overflow-hidden">
+              <StatsBar />
+              <Toolbar />
+              <div className="flex-1 overflow-y-auto">
+                <TalentGrid />
+              </div>
+            </main>
+          </div>
+        </div>
+
+        {/* Modals */}
+        <TalentDetailModal />
+        <AddTalentModal />
+        <NewProjectModal />
+        <Toast />
+      </div>
+    </AppProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
