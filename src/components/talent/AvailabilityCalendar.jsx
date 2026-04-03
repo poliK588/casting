@@ -18,13 +18,13 @@ export default function AvailabilityCalendar() {
   ];
 
   return (
-    <div className="bg-white rounded-[14px] border border-slate-200 p-4 lift">
+    <div className="glass-panel !rounded-[14px] p-4 lift">
       <div className="flex items-center justify-between mb-3">
-        <span className="flex items-center gap-2 text-[14px] font-[700] text-slate-900">
+        <span className="flex items-center gap-2 text-[14px] font-[700] text-white">
           <Icon name="calendar" size={14} color="#1a237e" />
           March 2026
         </span>
-        <span className="text-[12px] font-[600] text-navy-900 cursor-pointer hover:underline">
+        <span className="text-[12px] font-[600] text-indigo-400 cursor-pointer hover:underline">
           Set Availability &rarr;
         </span>
       </div>
@@ -36,10 +36,10 @@ export default function AvailabilityCalendar() {
       <div className="grid grid-cols-7 gap-[3px] mt-2">
         {grid.map((d, i) => {
           let cls = "aspect-square rounded-[6px] flex items-center justify-center text-[10px] font-[600] cursor-pointer ";
-          if (d.t === 'empty') cls += "bg-transparent text-slate-300";
-          if (d.t.includes('free')) cls += "bg-emerald-100 text-emerald-800";
-          if (d.t === 'busy') cls += "bg-red-100 text-red-800";
-          if (d.t === 'partial') cls += "bg-amber-100 text-amber-800";
+          if (d.t === 'empty') cls += "bg-transparent text-slate-600";
+          if (d.t.includes('free')) cls += "bg-emerald-500/20 text-emerald-300";
+          if (d.t === 'busy') cls += "bg-red-500/20 text-red-300";
+          if (d.t === 'partial') cls += "bg-amber-500/20 text-amber-300";
           if (d.t.includes('today')) cls += " outline outline-[2px] outline-navy-900 outline-offset-[1px]";
           
           return <div key={i} className={cls}>{d.n}</div>;
@@ -48,13 +48,13 @@ export default function AvailabilityCalendar() {
 
       <div className="flex items-center gap-3 mt-3">
         <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-          <div className="w-2.5 h-2.5 rounded-[3px] bg-emerald-100" /> Free
+          <div className="w-2.5 h-2.5 rounded-[3px] bg-emerald-500/20" /> Free
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-          <div className="w-2.5 h-2.5 rounded-[3px] bg-amber-100" /> Partial
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+          <div className="w-2.5 h-2.5 rounded-[3px] bg-amber-500/20" /> Partial
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-          <div className="w-2.5 h-2.5 rounded-[3px] bg-red-100" /> Busy
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+          <div className="w-2.5 h-2.5 rounded-[3px] bg-red-500/20" /> Busy
         </div>
       </div>
     </div>

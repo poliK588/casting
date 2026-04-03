@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
+import Signup from './pages/Signup';
 import AdminDashboard from './pages/AdminDashboard';
 import TalentDashboard from './pages/TalentDashboard';
 import TalentProfilePage from './pages/TalentProfilePage';
@@ -22,6 +23,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
           
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route element={<DashboardLayout type="admin" />}>

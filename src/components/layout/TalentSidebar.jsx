@@ -13,7 +13,7 @@ export default function TalentSidebar() {
   ];
 
   return (
-    <nav className="w-[68px] bg-navy-900 flex flex-col items-center py-0 flex-shrink-0 relative z-10">
+    <nav className="w-[68px] glass-sidebar flex flex-col items-center py-0 flex-shrink-0 relative z-10">
       {/* Logo mark */}
       <div className="w-full flex items-center justify-center pt-4 pb-3 border-b border-white/10">
         <div className="w-[34px] h-[34px] bg-white/15 rounded-[10px] flex items-center justify-center">

@@ -4,81 +4,85 @@ import { supabase } from '../services/supabaseClient';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [session, setSession] = useState(null);
-  const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchUserRole = async (userId) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('auth_id', userId)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      return data?.role || 'talent';
-    } catch (err) {
-      console.error('Role fetch error:', err);
-      return 'talent';
-    }
-  };
+  const [authState, setAuthState] = useState({
+    session: null,
+    user: null,
+    profile: null,
+    profileError: false,
+    isAuthenticated: false,
+    isReady: false,
+  });
 
   useEffect(() => {
     let mounted = true;
 
-    // 🔹 1. INIT 
-    const initAuth = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const session = data.session;
-
-        if (!mounted) return;
-
-        setSession(session);
-        setUser(session?.user || null);
-
-        if (session?.user) {
-          const userRole = await fetchUserRole(session.user.id);
-          if (mounted) setRole(userRole);
-        } else {
-          setRole(null);
+    const resolveAuthState = async (session, maxRetries = 2) => {
+      if (!session) {
+        if (mounted) {
+          setAuthState({
+            session: null, user: null, profile: null, profileError: false, isAuthenticated: false, isReady: true,
+          });
         }
+        return;
+      }
 
-      } catch (err) {
-        console.error('initAuth error:', err);
-      } finally {
-        if (mounted) setLoading(false);
+      let profileData = null;
+      let fetchSuccess = false;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const fetchProfile = supabase
+            .from('profiles')
+            .select('*')
+            .eq('auth_id', session.user.id)
+            .maybeSingle();
+
+          const timeout = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('TIMEOUT')), 5000)
+          );
+
+          const res = await Promise.race([fetchProfile, timeout]);
+
+          if (res.error) throw res.error;
+          
+          profileData = res.data;
+          fetchSuccess = true;
+          break; 
+        } catch (error) {
+          console.warn(`Profile fetch attempt ${attempt + 1} failed:`, error);
+          if (attempt < maxRetries) {
+            await new Promise(r => setTimeout(r, 1000)); 
+          }
+        }
+      }
+
+      if (mounted) {
+        setAuthState({
+          session,
+          user: session.user,
+          profile: fetchSuccess ? (profileData ?? null) : null,
+          profileError: !fetchSuccess,
+          isAuthenticated: true,
+          isReady: true,
+        });
       }
     };
 
-    initAuth();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      resolveAuthState(session);
+    });
 
-    // 🔹 2. LISTENER (setLoading(true))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('AUTH_EVENT:', event);
-
-        if (!mounted) return;
-
-        try {
-          setSession(session);
-          setUser(session?.user || null);
-
-          if (session?.user) {
-            const userRole = await fetchUserRole(session.user.id);
-            if (mounted) setRole(userRole);
-          } else {
-            setRole(null);
-          }
-
-        } catch (err) {
-          console.error('auth change error:', err);
-        }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // FIX 1: Never ignore INITIAL_SESSION. Only ignore background token refreshes.
+      if (event === 'TOKEN_REFRESHED') return;
+      
+      // FIX 2: Suspend UI on both sign in and sign out transitions to prevent UI leaks.
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        if (mounted) setAuthState(prev => ({ ...prev, isReady: false }));
       }
-    );
+      
+      resolveAuthState(session);
+    });
 
     return () => {
       mounted = false;
@@ -86,21 +90,13 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const value = {
-    session,
-    user,
-    role,
-    loading,
-    signOut: () => supabase.auth.signOut()
-  };
+  const signOut = () => supabase.auth.signOut();
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ ...authState, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
