@@ -1,42 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../services/supabaseClient';
 
 export default function TalentHeader() {
-  const { signOut } = useAuth();
+  const { signOut, profile } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [profile, setProfile] = useState(null);
+
+  const menuRef = useRef(null);
 
   useEffect(() => {
-    const close = () => setIsMenuOpen(false);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, []);
-
-  // Fetch profile for header avatar + name
-  useEffect(() => {
-    async function loadHeaderProfile() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) return;
-        const { data } = await supabase
-          .from('profiles')
-          .select('name, image_url')
-          .eq('auth_id', session.user.id)
-          .single();
-        if (data) setProfile(data);
-      } catch (err) {
-        console.error('Header profile fetch error:', err);
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setIsMenuOpen(false);
       }
-    }
-    loadHeaderProfile();
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const displayName = profile?.name || 'Talent';
+  const displayName = profile?.first_name ? `${profile.first_name} ${profile.last_name || ''}`.trim() : 'Talent';
   const avatarUrl = profile?.image_url || null;
 
   return (
-    <header className="flex items-center gap-3 glass-header px-6 h-14 flex-shrink-0">
+    <header className="flex items-center gap-3 glass-header px-6 h-14 flex-shrink-0 relative z-50">
       
       {/* Logo Area */}
       <div className="flex items-center gap-2">
@@ -77,37 +62,47 @@ export default function TalentHeader() {
           <div className="absolute top-[5px] right-[5px] w-2 h-2 bg-red-500 rounded-full border-[1.5px] border-slate-900"></div>
         </div>
 
-        <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
-          <div 
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
+        <div ref={menuRef} className="relative flex-shrink-0">
+          <div
+            onClick={() => setIsMenuOpen(prev => !prev)}
             className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-[10px] hover:bg-white/10 cursor-pointer transition-colors ml-1"
           >
             {avatarUrl ? (
-              <img 
-                className="w-[30px] h-[30px] rounded-full object-cover object-top" 
-                src={avatarUrl} 
+              <img
+                className="w-[30px] h-[30px] rounded-full object-cover object-top"
+                src={avatarUrl}
                 alt={displayName}
               />
             ) : (
               <div className="w-[30px] h-[30px] rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                </svg>
               </div>
             )}
             <div className="flex flex-col">
               <div className="text-xs font-bold text-white leading-[1.1]">{displayName}</div>
               <div className="text-[10px] text-slate-400 leading-[1.1]">My Profile</div>
             </div>
-            <svg width="12" height="12" fill="none" stroke="#94a3b8" strokeWidth="2" viewBox="0 0 24 24" className="ml-0.5"><path strokeLinecap="round" d="M19 9l-7 7-7-7"/></svg>
+            <svg width="12" height="12" fill="none" stroke="#94a3b8" strokeWidth="2" viewBox="0 0 24 24" className="ml-0.5">
+              <path strokeLinecap="round" d="M19 9l-7 7-7-7"/>
+            </svg>
           </div>
 
           {isMenuOpen && (
-            <div className="absolute right-0 top-[calc(100%+6px)] glass-panel !rounded-xl z-50 w-48 py-1">
-              <button 
-                onClick={signOut}
-                className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors text-left"
+            <div className="absolute right-0 top-[calc(100%+8px)] w-52 glass-panel !rounded-xl z-[100] p-0 overflow-hidden shadow-2xl border border-white/5">
+              <button
+                onClick={async (e) => {
+                  e.preventDefault();
+                  setIsMenuOpen(false);
+                  if (typeof signOut === 'function') await signOut();
+                }}
+                className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-red-400 hover:bg-white/10 hover:text-red-300 transition-colors cursor-pointer text-left rounded-none"
               >
-                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-                Sign Out
+                <svg className="flex-shrink-0" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                <span>Sign Out</span>
               </button>
             </div>
           )}

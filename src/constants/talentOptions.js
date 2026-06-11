@@ -47,3 +47,9 @@ export const TALENT_OPTIONS = {
   PANT_SIZE: PANT_SIZE_OPTIONS,
   SHOE_SIZE: SHOE_SIZES
 };
+
+export const AVAILABILITY_OPTIONS = [
+  'available now',
+  'on hold',
+  'booked',
+];

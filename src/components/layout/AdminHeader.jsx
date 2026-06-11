@@ -4,8 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import Icon from './Icon';
 
 export default function AdminHeader() {
-  const { setSidebarExpanded, search, setSearch, setShowAddTalent, setShowNewProject, shortlist } = useContext(AppContext);
-  const { signOut } = useAuth();
+  const { setSidebarExpanded, setShowAddTalent, setShowNewProject, shortlist } = useContext(AppContext);
+  const { signOut, profile } = useAuth();
   const [avatarOpen, setAvatarOpen] = useState(false);
 
   useEffect(() => {
@@ -29,24 +29,7 @@ export default function AdminHeader() {
         <span className="text-[10px] font-semibold text-slate-400 border border-slate-200 rounded px-1.5 py-0.5 ml-1">ADMIN</span>
       </div>
 
-      <div className="flex-1 max-w-lg relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
-          <Icon name="search" size={14} color="#94a3b8" />
-        </div>
-        <input
-          type="text"
-          placeholder="Search talent by name, skill, or look type…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full h-9 pl-9 pr-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-navy-400 focus:ring-2 focus:ring-navy-100 transition-all"
-        />
-        {search && (
-          <button onClick={() => setSearch('')}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-            <Icon name="close" size={14} color="currentColor" />
-          </button>
-        )}
-      </div>
+      <div className="flex-1" />
 
       <div className="flex items-center gap-1.5 ml-auto">
         <button onClick={() => setShowNewProject?.(true)}
@@ -81,11 +64,11 @@ export default function AdminHeader() {
         <div className="relative flex-shrink-0" onClick={e => e.stopPropagation()}>
           <button onClick={() => setAvatarOpen(p => !p)}
             className="flex items-center gap-2 pl-1 pr-2 h-8 rounded-lg hover:bg-slate-100 transition-colors">
-            <img src="https://ui-avatars.com/api/?name=Sarah+Kendall&background=0f172a&color=fff&size=64&bold=true"
+            <img src={profile?.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent((profile?.first_name || 'U') + '+' + (profile?.last_name || ''))}&background=0f172a&color=fff&size=64&bold=true`}
               className="w-7 h-7 rounded-full object-cover" alt="avatar" />
             <div className="hidden sm:block text-left">
-              <p className="text-xs font-bold text-slate-700 leading-none">Sarah Kendall</p>
-              <p className="text-[10px] text-slate-400 leading-none mt-0.5">Senior Agent</p>
+              <p className="text-xs font-bold text-slate-700 leading-none">{profile?.first_name ? `${profile.first_name} ${profile.last_name || ''}`.trim() : 'Admin'}</p>
+              <p className="text-[10px] text-slate-400 leading-none mt-0.5">{profile?.role || 'Agent'}</p>
             </div>
             <Icon name="chevDown" size={12} color="#94a3b8" />
           </button>

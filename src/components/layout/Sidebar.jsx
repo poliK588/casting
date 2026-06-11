@@ -1,5 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import Icon from '../shared/Icon';
 
 function NavItem({ item, active, expanded, onClick }) {
@@ -36,6 +37,7 @@ function NavItem({ item, active, expanded, onClick }) {
 
 export default function Sidebar() {
   const { activeNav, setActiveNav, sidebarExpanded } = useContext(AppContext);
+  const { profile } = useAuth();
   const navItems = [
     { id:'dashboard', icon:'grid',     label:'Dashboard' },
     { id:'projects',  icon:'folder',   label:'Projects',   badge: 3 },
@@ -76,14 +78,14 @@ export default function Sidebar() {
       {/* Profile snippet */}
       <div className="border-t border-white/10 p-3 flex items-center gap-2.5">
         <img
-          src="https://ui-avatars.com/api/?name=Sarah+Kendall&background=4f5fdd&color=fff&size=64&bold=true"
+          src={profile?.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent((profile?.first_name || 'U') + '+' + (profile?.last_name || ''))}&background=4f5fdd&color=fff&size=64&bold=true`}
           className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-          alt="admin"
+          alt={profile?.first_name || 'User'}
         />
         {sidebarExpanded && (
           <div className="overflow-hidden">
-            <p className="text-xs font-700 text-white truncate leading-tight">Sarah Kendall</p>
-            <p className="text-[10px] text-white/50 truncate">Senior Agent</p>
+            <p className="text-xs font-700 text-white truncate leading-tight">{profile?.first_name} {profile?.last_name || ''}</p>
+            <p className="text-[10px] text-white/50 truncate">{profile?.role || 'Agent'}</p>
           </div>
         )}
       </div>

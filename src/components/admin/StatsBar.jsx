@@ -1,20 +1,15 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
+import { useSearch } from '../../context/SearchContext';
 import Icon from '../shared/Icon';
 
 export default function StatsBar() {
-  const { talent, shortlist, setShowNewProject } = useContext(AppContext);
-  const available = talent.filter(t => t.status === 'available').length;
-  const onHold    = talent.filter(t => t.status === 'hold').length;
-  const booked    = talent.filter(t => t.status === 'busy').length;
-  const avgRating = (talent.reduce((s,t) => s + t.rating, 0) / talent.length).toFixed(1);
+  const { results } = useSearch();
+  const { shortlist, setShowNewProject } = useContext(AppContext);
 
   const stats = [
-    { label:'Total Talent', value: talent.length, icon:'users', color:'text-navy-700', bg:'bg-navy-50' },
-    { label:'Available',    value: available,      icon:'checkCircle', color:'text-emerald-600', bg:'bg-emerald-50' },
-    { label:'On Hold',      value: onHold,         icon:'info',       color:'text-amber-600',   bg:'bg-amber-50' },
-    { label:'Booked Out',   value: booked,         icon:'lock',       color:'text-red-500',     bg:'bg-red-50' },
-    { label:'Avg Rating',   value: avgRating,      icon:'starFill',   color:'text-purple-600',  bg:'bg-purple-50' },
+    { label: 'Results', value: results.length, icon: 'users', color: 'text-navy-700', bg: 'bg-navy-50' },
+    { label: 'Shortlisted', value: shortlist.size, icon: 'starFill', color: 'text-amber-600', bg: 'bg-amber-50' },
   ];
 
   return (

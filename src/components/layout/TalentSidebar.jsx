@@ -1,7 +1,9 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 export default function TalentSidebar() {
+  const { profile } = useAuth();
   const navItems = [
     { to: '/talent', exact: true, label: 'Dashboard', icon: <svg width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> },
     { to: '/talent/profile', label: 'Profile', icon: <svg width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg> },
@@ -51,13 +53,13 @@ export default function TalentSidebar() {
       {/* Profile snippet */}
       <div className="w-full py-3 border-t border-white/10 flex flex-col items-center gap-1.5 mt-auto">
         <div className="relative inline-block">
-          <img src="https://randomuser.me/api/portraits/women/44.jpg"
+          <img src={profile?.image_url || `https://ui-avatars.com/api/?name=${encodeURIComponent((profile?.first_name || 'U') + '+' + (profile?.last_name || ''))}&background=fff&color=1a237e&size=80&bold=true`}
             className="w-[38px] h-[38px] rounded-full object-cover object-top border-2 border-white/25"
-            alt="Mia Chen"
-            onError={(e) => { e.target.src='https://ui-avatars.com/api/?name=Mia+Chen&background=fff&color=1a237e&size=80&bold=true'; }} />
+            alt={profile?.first_name || 'User'}
+            onError={(e) => { e.target.src='https://ui-avatars.com/api/?name=User&background=fff&color=1a237e&size=80&bold=true'; }} />
           <div className="absolute bottom-px right-px w-[9px] h-[9px] bg-green-500 rounded-full border-[1.5px] border-navy-900 animate-pulse"></div>
         </div>
-        <span className="text-[9px] font-semibold text-white/50 tracking-[0.04em]">Online</span>
+        <span className="text-[9px] font-semibold text-white/50 tracking-[0.04em]">{profile?.first_name || 'User'}</span>
       </div>
     </nav>
   );

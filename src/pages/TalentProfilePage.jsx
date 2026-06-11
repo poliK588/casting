@@ -1,54 +1,79 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import TalentProfileForm from '../components/forms/TalentProfileForm';
-import ProfileSummaryCard from '../components/talent/ProfileSummaryCard';
+import ProfileCompletionBanner from '../components/talent/ProfileCompletionBanner';
 import { supabase } from '../services/supabaseClient';
-import { AppContext } from '../context/AppContext';
+import { profileGuard } from '../utils/profileGuard';
 
 export default function TalentProfilePage() {
-  const { showToast } = useContext(AppContext);
-  const [profile, setProfile] = useState(null);
-  const [privateInfo, setPrivateInfo] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { refreshProfile } = useOutletContext();
+  const [formData, setFormData] = useState(null);
+  const [privateData, setPrivateData] = useState(null);
+  const [skillOptions, setSkillOptions] = useState([]);
+  const [langOptions, setLangOptions] = useState([]);
+  const [ethOptions, setEthOptions] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [mediaCount, setMediaCount] = useState(0);
 
-  /* ── Parallel Dual-Table Fetch ── */
+  // ── Load Logic ──
   useEffect(() => {
     async function loadData() {
       try {
-        // FIXED: Using getSession() prevents the network deadlock caused by getUser()
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-        if (!user) {
-          setIsLoading(false);
-          return;
+        // Fetch Main Payload + Joins
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*, profile_private_info(*), user_skills(*), user_languages(*), user_ethnicities(*)')
+          .eq('auth_id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error("Fetch profile error:", error);
         }
 
-        const [profileRes, privateRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('auth_id', user.id).single(),
-          supabase.from('profile_private_info').select('*').eq('auth_id', user.id).single()
+        if (data) {
+          // Handle profile_private_info as array OR object (Supabase varies by FK shape)
+          const pInfo = Array.isArray(data.profile_private_info)
+            ? data.profile_private_info[0]
+            : data.profile_private_info;
+
+          // Flatten private info into explicit fields
+          const priv = {
+            phone: pInfo?.phone || '',
+            street_address: pInfo?.street_address || '',
+            unit_number: pInfo?.unit_number || '',
+            postal_code: pInfo?.postal_code || ''
+          };
+
+          // Flatten relations
+          const skills = data.user_skills?.map(s => s.skill_id) || [];
+          const languages = data.user_languages?.map(l => l.language_id) || [];
+          const ethnicity = data.user_ethnicities?.[0]?.ethnicity_id || null;
+
+          // Full spread — everything from DB + flattened priv + relations
+          setFormData({ ...data, ...priv, skills, languages, ethnicity });
+          setPrivateData(priv);
+        } else {
+          setFormData({});
+          setPrivateData({});
+        }
+
+        // Fetch Dicts for Multi-selects
+        const [skillsRes, langsRes, ethsRes] = await Promise.all([
+          supabase.from('skills').select('id, name'),
+          supabase.from('languages').select('id, name'),
+          supabase.from('ethnicities').select('id, name')
         ]);
+        if (skillsRes.data) setSkillOptions(skillsRes.data.map(i => ({ value: i.id, label: i.name })));
+        if (langsRes.data) setLangOptions(langsRes.data.map(i => ({ value: i.id, label: i.name })));
+        if (ethsRes.data) setEthOptions(ethsRes.data.map(i => ({ value: i.id, label: i.name })));
 
-        if (profileRes.error && profileRes.error.code !== 'PGRST116') {
-          console.error('Profile fetch error:', profileRes.error);
-        }
-        if (profileRes.data) {
-          const clean = {};
-          Object.keys(profileRes.data).forEach(k => {
-            if (profileRes.data[k] !== null) clean[k] = profileRes.data[k];
-          });
-          setProfile(clean);
-        }
-
-        if (privateRes.error && privateRes.error.code !== 'PGRST116') {
-          console.error('Private info fetch error:', privateRes.error);
-        }
-        if (privateRes.data) {
-          setPrivateInfo(privateRes.data);
-        }
       } catch (err) {
-        console.error('Error loading profile data:', err);
+        console.error("Load error:", err);
       } finally {
         setIsLoading(false);
       }
@@ -56,145 +81,159 @@ export default function TalentProfilePage() {
     loadData();
   }, []);
 
-  /* ── Sequential Dual-Table Save ── */
-  const handleSubmit = async (formData, privData) => {
+  // ── Media count for ProfileCompletionBanner ──
+  useEffect(() => {
+    const fetchMediaCount = async () => {
+      if (!formData?.id) return;
+      const { count } = await supabase
+        .from('media')
+        .select('*', { count: 'exact', head: true })
+        .eq('profile_id', formData.id);
+      setMediaCount(count || 0);
+    };
+    fetchMediaCount();
+  }, [formData?.id]);
+
+  // ── Save Logic ──
+  const handleSave = async (formPayload, privPayload) => {
     setIsSubmitting(true);
-    setSubmitError(null);
+    setErrorMsg('');
+
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error('Not authenticated. Please log in again.');
 
-      if (!user) throw new Error('Not authenticated');
-      const authId = user.id;
+      // 1. Normalize public profile data (v3.0 — strict types, dynamic pass-through)
+      const normalizedPub = profileGuard.normalize(formPayload, user.id);
 
-      // ─ Pre-flight validation ─
-      if (!formData.first_name?.trim() || !formData.last_name?.trim() || !formData.birth_date || !privData.phone?.trim()) {
-        setSubmitError('First Name, Last Name, Date of Birth, Phone, and Profile Photo are strictly required.');
-        setIsSubmitting(false);
-        return;
+      // 2. Normalize private data — fallback to formPayload if privPayload is empty
+      const privSource = (privPayload && Object.values(privPayload).some(v => v))
+        ? privPayload
+        : formPayload;
+      const privData = profileGuard.normalizePrivate(privSource, user.id);
+
+      // 3. Validate
+      const validation = profileGuard.validate(normalizedPub);
+      if (!validation.valid) {
+        let errMsg = 'Invalid profile data.';
+        if (validation.error === 'NAME_REQUIRED') errMsg = 'Please provide either a First or Last name.';
+        if (validation.error === 'MISSING_AUTH_ID') errMsg = 'Authentication ID missing. Try logging in again.';
+        throw new Error(errMsg);
       }
 
-      // ─ Build profile payload ─
-      const profilePayload = {
-        ...formData,
-        name: `${formData.first_name || ''} ${formData.last_name || ''}`.trim(),
-        updated_at: new Date().toISOString()
-      };
+      // 4. Get ethnicity DIRECTLY from form (normalize strips it from normalizedPub)
+      const selectedEthnicity = formPayload.ethnicity;
+      const pubData = normalizedPub; // already clean — ethnicity was stripped by normalize()
 
-      // Sanitize: empty birth_date → null to prevent PG casting errors
-      if (profilePayload.birth_date === '') profilePayload.birth_date = null;
+      // 5. Extract relation IDs from original form payload
+      const skillsToSave = profileGuard.getRelationIds(formPayload, 'skills');
+      const langsToSave = profileGuard.getRelationIds(formPayload, 'languages');
 
-      // Cast numeric fields to numbers
-      const numFields = ['height_ft', 'height_in', 'weight_lbs', 'waist_size_in', 'neck_size_in', 'sleeve_size_in', 'inseam_size_in', 'rate', 'age', 'credits'];
-      numFields.forEach(f => {
-        if (profilePayload[f] !== undefined && profilePayload[f] !== '') {
-          profilePayload[f] = parseFloat(profilePayload[f]);
-        } else {
-          delete profilePayload[f];
-        }
-      });
+      // ── DEBUG: Verify payload before upsert ──
+      console.log("DB_PAYLOAD_CHECK:", pubData);
 
-      // FIXED: Only skills and languages are JSONB arrays
-      ['skills', 'languages'].forEach(f => {
-        if (profilePayload[f] && !Array.isArray(profilePayload[f])) {
-          profilePayload[f] = [];
-        }
-      });
+      // 6. Upsert profile (clean — no relational data)
+      const { data: profile, error: pubError } = await supabase
+        .from('profiles')
+        .upsert(pubData, { onConflict: 'auth_id' })
+        .select()
+        .maybeSingle();
 
-      // FIXED: Ethnicity must be a string (text column in DB)
-      if (Array.isArray(profilePayload.ethnicity)) {
-        profilePayload.ethnicity = profilePayload.ethnicity.join(', ');
+      if (pubError || !profile) {
+        throw new Error(pubError?.message || 'Supabase error updating profile.');
       }
 
-      // ─ Build private payload ─
-      const privatePayload = {
-        phone: privData.phone || null,
-        street_address: privData.street_address || null,
-        postal_code: privData.postal_code || null
-      };
+      // 7. Upsert private info
+      const privRes = await supabase.from('profile_private_info').upsert(privData, { onConflict: 'auth_id' });
+      if (privRes.error) throw new Error(privRes.error.message || 'Supabase error updating private info.');
 
-      // ─ Atomic RPC call ─
-      const { error: rpcError } = await supabase.rpc('update_talent_profile_full', {
-        p_auth_id: authId,
-        p_profile_data: profilePayload,
-        p_private_data: privatePayload
-      });
+      // 8. SYNC SKILLS — DELETE + INSERT using profile.id
+      const { error: skillDelErr } = await supabase.from('user_skills').delete().eq('user_id', profile.id);
+      if (skillDelErr) { console.error('[RELATION_SYNC_FAILED]', skillDelErr); throw skillDelErr; }
 
-      if (rpcError) throw rpcError;
+      if (skillsToSave.length) {
+        const skillRows = skillsToSave.map(skill_id => ({ user_id: profile.id, skill_id }));
+        const { error: skillInsErr } = await supabase.from('user_skills').insert(skillRows);
+        if (skillInsErr) { console.error('[RELATION_SYNC_FAILED]', skillInsErr); throw skillInsErr; }
+      }
 
-      // Refresh local state
-      const [profileRes, privateRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('auth_id', authId).single(),
-        supabase.from('profile_private_info').select('*').eq('auth_id', authId).single()
-      ]);
+      // 9. SYNC LANGUAGES — DELETE + INSERT using profile.id
+      const { error: langDelErr } = await supabase.from('user_languages').delete().eq('user_id', profile.id);
+      if (langDelErr) { console.error('[RELATION_SYNC_FAILED]', langDelErr); throw langDelErr; }
 
-      if (profileRes.data) setProfile(profileRes.data);
-      if (privateRes.data) setPrivateInfo(privateRes.data);
+      if (langsToSave.length) {
+        const languageRows = langsToSave.map(language_id => ({ user_id: profile.id, language_id }));
+        const { error: langInsErr } = await supabase.from('user_languages').insert(languageRows);
+        if (langInsErr) { console.error('[RELATION_SYNC_FAILED]', langInsErr); throw langInsErr; }
+      }
 
-      showToast('Profile updated successfully!');
-    } catch (error) {
-      console.error('Save error:', error);
-      setSubmitError(error.message || 'Failed to update profile.');
-      throw error;
+      // 10. SYNC ETHNICITY — DELETE + INSERT (single value) using profile.id
+      const { error: ethDelErr } = await supabase.from('user_ethnicities').delete().eq('user_id', profile.id);
+      if (ethDelErr) { console.error('[RELATION_SYNC_FAILED]', ethDelErr); throw ethDelErr; }
+
+      if (selectedEthnicity) {
+        const { error: ethInsErr } = await supabase.from('user_ethnicities').insert({ user_id: profile.id, ethnicity_id: selectedEthnicity });
+        if (ethInsErr) { console.error('[RELATION_SYNC_FAILED]', ethInsErr); throw ethInsErr; }
+      }
+
+      // ── Refresh Layout ──
+      if (refreshProfile) refreshProfile();
+
+    } catch (err) {
+      console.error('[SAVE_FAILED]', err);
+      setErrorMsg(err.message || 'Failed to save profile. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  /* ── Loading State ── */
   if (isLoading) {
     return (
-      <div className="flex-1 w-full flex justify-center items-center bg-slate-50">
-        <div className="animate-spin w-8 h-8 rounded-full border-[3px] border-navy-900 border-t-transparent"></div>
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
       </div>
     );
   }
 
-  /* ── Map profile for summary card ── */
-  const displayUser = {
-    name: profile?.name || '',
-    age: profile?.age || 0,
-    location: profile?.city && profile?.province ? `${profile.city}, ${profile.province}` : (profile?.location || ''),
-    rating: profile?.rating || 0,
-    credits: profile?.credits || 0,
-    submitted: 0,
-    rate: profile?.rate || 0,
-    union: profile?.union_status || '',
-    status: profile?.status === 'available' ? 'Online Now' : '',
-    skills: profile?.skills || [],
-    languages: profile?.languages || [],
-    heroImg: profile?.image_url || '',
-    avatar: profile?.image_url || ''
-  };
-
-  /* ── Render ── */
   return (
-    <div className="flex-1 overflow-x-hidden overflow-y-auto w-full bg-slate-50 pb-12">
-      <div className="w-full px-6 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-extrabold text-navy-900 tracking-tight">Profile Management</h1>
-          <p className="text-sm text-slate-500 mt-1.5 font-medium tracking-tight">Complete your professional profile to increase your visibility to casting directors.</p>
-        </div>
+    <div className="px-6 py-5 flex flex-col gap-5">
 
-        <div className="grid grid-cols-12 gap-8 items-start">
-          {/* Left Column — Profile Summary */}
-          <div className="col-span-3 sticky top-6 flex flex-col gap-4">
-            <ProfileSummaryCard user={displayUser} />
-          </div>
-
-          {/* Right Column — Sectional Blocks */}
-          <div className="col-span-9">
-            <TalentProfileForm
-              initialData={profile || {}}
-              privateData={privateInfo || {}}
-              onSubmit={handleSubmit}
-              isSubmitting={isSubmitting}
-              errorMsg={submitError}
-              hideCancel={true}
-            />
-          </div>
+      {/* ── Page Title ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[24px] font-[900] text-white tracking-tight">Edit Professional Profile</h1>
+          <p className="text-[13px] text-slate-400 font-medium">Update your professional details and credits.</p>
         </div>
       </div>
+
+      {/* ── Profile Completion Banner ── */}
+      {formData && (
+        <ProfileCompletionBanner
+          user={{
+            heroImg: formData.image_url || '',
+            height_ft: formData.height_ft ?? null,
+            height_in: formData.height_in ?? null,
+            weight_lbs: formData.weight_lbs ?? null,
+            skills: formData.skills || [],
+            languages: formData.languages || [],
+            union_status: formData.union_status || null,
+            _raw: formData,
+          }}
+          mediaCount={mediaCount}
+        />
+      )}
+
+      <TalentProfileForm
+        initialData={formData}
+        privateData={privateData}
+        skillOptions={skillOptions}
+        langOptions={langOptions}
+        ethOptions={ethOptions}
+        onSubmit={handleSave}
+        isSubmitting={isSubmitting}
+        errorMsg={errorMsg}
+        hideCancel={true}
+      />
     </div>
   );
 }

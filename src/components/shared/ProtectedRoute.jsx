@@ -7,9 +7,51 @@ export default function ProtectedRoute({ allowedRoles = [] }) {
 
   if (!isReady) {
     return (
-      <div className="hero-bg min-h-screen flex items-center justify-center">
-        <div className="text-blue-400 font-bold animate-pulse text-xs tracking-widest uppercase">
-          Initializing System...
+      <div className="hero-bg min-h-screen flex overflow-hidden">
+        
+        {/* Sidebar skeleton */}
+        <div className="w-[68px] flex-shrink-0 flex flex-col items-center 
+          py-4 gap-4 border-r border-white/5">
+          <div className="w-9 h-9 rounded-xl bg-white/5 animate-pulse" />
+          {[...Array(5)].map((_, i) => (
+            <div key={i} 
+              className="w-9 h-9 rounded-xl bg-white/5 animate-pulse" />
+          ))}
+        </div>
+
+        <div className="flex-1 flex flex-col">
+          
+          {/* Header skeleton */}
+          <div className="h-[60px] border-b border-white/5 flex items-center 
+            px-6 gap-4">
+            <div className="w-32 h-4 rounded-lg bg-white/5 animate-pulse" />
+            <div className="flex-1" />
+            <div className="w-24 h-8 rounded-lg bg-white/5 animate-pulse" />
+            <div className="w-24 h-8 rounded-lg bg-white/5 animate-pulse" />
+          </div>
+
+          <div className="flex flex-1 overflow-hidden">
+            
+            {/* Left HUD skeleton */}
+            <div className="w-[300px] flex-shrink-0 p-4 flex flex-col gap-3">
+              <div className="h-[200px] rounded-2xl bg-white/5 animate-pulse" />
+              <div className="h-[280px] rounded-2xl bg-white/5 animate-pulse" />
+            </div>
+
+            {/* Main content skeleton */}
+            <div className="flex-1 p-6 flex flex-col gap-4">
+              <div className="h-6 w-48 rounded-lg bg-white/5 animate-pulse" />
+              <div className="h-16 rounded-xl bg-white/5 animate-pulse" />
+              <div className="grid grid-cols-5 gap-3">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} 
+                    className="h-28 rounded-xl bg-white/5 animate-pulse" />
+                ))}
+              </div>
+              <div className="h-48 rounded-xl bg-white/5 animate-pulse" />
+            </div>
+
+          </div>
         </div>
       </div>
     );

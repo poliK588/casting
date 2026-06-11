@@ -9,6 +9,11 @@ import Signup from './pages/Signup';
 import AdminDashboard from './pages/AdminDashboard';
 import TalentDashboard from './pages/TalentDashboard';
 import TalentProfilePage from './pages/TalentProfilePage';
+import TalentMediaPage from './pages/TalentMediaPage';
+import TalentCastingsPage from './pages/TalentCastingsPage';
+import TalentSchedulePage from './pages/TalentSchedulePage';
+import TalentMessagesPage from './pages/TalentMessagesPage';
+import TalentAccountPage from './pages/TalentAccountPage';
 import DashboardLayout from './components/layout/DashboardLayout';
 import AddTalentModal from './components/modals/AddTalentModal';
 import Toast from './components/shared/Toast';
@@ -35,6 +40,11 @@ export default function App() {
             <Route element={<DashboardLayout type="talent" />}>
               <Route path="/talent" element={<TalentDashboard />} />
               <Route path="/talent/profile" element={<TalentProfilePage />} />
+              <Route path="/talent/media" element={<TalentMediaPage />} />
+              <Route path="/talent/castings" element={<TalentCastingsPage />} />
+              <Route path="/talent/schedule" element={<TalentSchedulePage />} />
+              <Route path="/talent/messages" element={<TalentMessagesPage />} />
+              <Route path="/talent/account" element={<TalentAccountPage />} />
             </Route>
           </Route>
         </Routes>

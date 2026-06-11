@@ -5,7 +5,7 @@ import { addTalent } from '../../services/talentService';
 import TalentProfileForm from '../forms/TalentProfileForm';
 
 export default function AddTalentModal() {
-  const { showAddTalent, setShowAddTalent, refreshTalents, showToast } = useContext(AppContext);
+  const { showAddTalent, setShowAddTalent, showToast } = useContext(AppContext);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
@@ -28,7 +28,6 @@ export default function AddTalentModal() {
       
       await addTalent(talentData);
       showToast(`Saved ${formData.first_name} ${formData.last_name} to database!`);
-      await refreshTalents();
       setShowAddTalent(false);
     } catch (error) {
       console.error(error);
