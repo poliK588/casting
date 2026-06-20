@@ -8,8 +8,8 @@ export const AppContext = createContext();
  */
 export function AppProvider({ children }) {
   const [shortlist, setShortlist] = useState(new Set());
-  const [activeNav, setActiveNav] = useState('dashboard');
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [activeNav, setActiveNav] = useState(null);
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [viewMode, setViewMode] = useState('grid');
 
   const [talentModal, setTalentModal] = useState(null);

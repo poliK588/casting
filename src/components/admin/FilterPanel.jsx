@@ -143,7 +143,7 @@ export default function FilterPanel() {
   const dis = !isSearchEngineReady;
 
   return (
-    <aside className="w-60 flex-shrink-0 bg-white border-r border-slate-200 flex flex-col overflow-hidden h-full">
+    <aside className="w-full h-full bg-white flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 sticky top-0 bg-white z-10">
         <div className="flex items-center gap-2">
