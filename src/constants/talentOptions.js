@@ -4,7 +4,7 @@ export const HAIR_COLOR_OPTIONS = ['Black', 'Brown', 'Blonde', 'Red', 'Grey', 'W
 export const HAIR_LENGTH_OPTIONS = ['Short', 'Medium', 'Long', 'Shaved'];
 export const EYE_COLOR_OPTIONS = ['Blue', 'Brown', 'Green', 'Hazel', 'Grey', 'Other'];
 export const ETHNICITY_OPTIONS = ['Caucasian', 'Black / African', 'East Asian', 'South Asian', 'Hispanic / Latino', 'Middle Eastern', 'Indigenous'];
-export const UNION_OPTIONS = ['Non-Union', 'ACTRA', 'SAG-AFTRA', 'Equity'];
+export const UNION_OPTIONS = ['Non-union', 'Full Actra', 'Actra Apprentice', 'AABP', 'Double Carded', 'Full Actra + Double Carded', 'SAG-AFTRA', 'Equity'];
 export const PROVINCES_OPTIONS = ['Ontario', 'Quebec', 'British Columbia', 'Alberta', 'Manitoba', 'Saskatchewan'];
 
 export const SHOE_SIZES = ['6', '6.5', '7', '7.5', '8', '8.5', '9', '9.5', '10', '10.5', '11', '11.5', '12', '13', '14'];

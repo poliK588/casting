@@ -20,7 +20,7 @@ export default function ProfileSummaryCard({ user, editLink, availabilityStatus 
     ? `${user.height_ft}'${user.height_in}"`
     : '--';
   const weightStr = user.weight_lbs ? `${user.weight_lbs}` : '--';
-  const unionBadge = user.union_status || 'Non-Union';
+  const unionBadge = user.union_status || 'Non-union';
   const statusLabel = user.status === 'available' ? 'Available' : (user.status || 'Available');
   const instagramHandle = user.social_links?.instagram || null;
   const heroImage = user.heroImg || user.image_url;

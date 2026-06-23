@@ -19,8 +19,12 @@ const GENDER_OPTIONS = [
   { label: 'Other', value: 'Other' },
 ];
 const UNION_STATUS_OPTIONS = [
-  { label: 'Non-Union', value: 'Non-Union' },
-  { label: 'ACTRA', value: 'ACTRA' },
+  { label: 'Non-union', value: 'Non-union' },
+  { label: 'Full Actra', value: 'Full Actra' },
+  { label: 'Actra Apprentice', value: 'Actra Apprentice' },
+  { label: 'AABP', value: 'AABP' },
+  { label: 'Double Carded', value: 'Double Carded' },
+  { label: 'Full Actra + Double Carded', value: 'Full Actra + Double Carded' },
   { label: 'SAG-AFTRA', value: 'SAG-AFTRA' },
   { label: 'Equity', value: 'Equity' },
 ];
@@ -95,7 +99,7 @@ const LoadingPlaceholder = () => (
 
 // ── Main component ──
 
-export default function FilterPanel() {
+export default function FilterPanel({ activeGroup }) {
   const {
     state, setSearch, setAgeRange, setHeightRange, setWeightRange,
     setDates, toggleFacet, clearFilters, activeFilters,
@@ -141,6 +145,9 @@ export default function FilterPanel() {
   }, [state]);
 
   const dis = !isSearchEngineReady;
+  const isDemographics = activeGroup === 'demographics';
+  const isAppearance = activeGroup === 'appearance';
+  const showAll = !isDemographics && !isAppearance;
 
   return (
     <aside className="w-full h-full bg-white flex flex-col overflow-hidden">
@@ -173,6 +180,7 @@ export default function FilterPanel() {
 
       <div className="overflow-y-auto flex-1">
 
+        {showAll && (<>
         {/* ── Search ── */}
         <Section id="search" title="Search" isOpen={open.search} onToggle={toggle} count={counts.search}>
           <div className="relative">
@@ -255,7 +263,9 @@ export default function FilterPanel() {
             )}
           </div>
         </Section>
+        </>)}
 
+        {(isDemographics || showAll) && (<>
         {/* ── Age Range ── */}
         <Section id="age" title="Age Range" isOpen={open.age} onToggle={toggle} count={counts.age}>
           <div className="space-y-3">
@@ -275,7 +285,9 @@ export default function FilterPanel() {
             </div>
           </div>
         </Section>
+        </>)}
 
+        {showAll && (<>
         {/* ── Height Range ── */}
         <Section id="height" title="Height" isOpen={open.height} onToggle={toggle} count={counts.height}>
           <div className="space-y-2">
@@ -321,7 +333,9 @@ export default function FilterPanel() {
             </div>
           </div>
         </Section>
+        </>)}
 
+        {(isDemographics || showAll) && (<>
         {/* ── Gender ── */}
         <Section id="gender" title="Gender" isOpen={open.gender} onToggle={toggle} count={counts.gender}>
           <div className="grid grid-cols-2 gap-1.5">
@@ -337,7 +351,9 @@ export default function FilterPanel() {
             })}
           </div>
         </Section>
+        </>)}
 
+        {showAll && (<>
         {/* ── Union Status ── */}
         <Section id="union" title="Union Status" isOpen={open.union} onToggle={toggle} count={counts.union}>
           <div className="flex flex-col gap-1">
@@ -346,7 +362,9 @@ export default function FilterPanel() {
             ))}
           </div>
         </Section>
+        </>)}
 
+        {(isAppearance || showAll) && (<>
         {/* ── Appearance ── */}
         <Section id="appearance" title="Appearance" isOpen={open.appearance} onToggle={toggle} count={counts.appearance}>
           <div className="space-y-3">
@@ -376,7 +394,9 @@ export default function FilterPanel() {
             </div>
           </div>
         </Section>
+        </>)}
 
+        {showAll && (<>
         {/* ── Location ── */}
         <Section id="location" title="Location" isOpen={open.location} onToggle={toggle} count={counts.location}>
           <div className="grid grid-cols-3 gap-1.5">
@@ -439,7 +459,9 @@ export default function FilterPanel() {
            <Combobox items={refData.languages} selected={state.facets.languages} onToggle={id => toggleFacet('languages', id)}
              placeholder="Search languages…" disabled={dis} />}
         </Section>
+        </>)}
 
+        {(isDemographics || showAll) && (<>
         {/* ── Ethnicities ── */}
         <Section id="ethnicities" title="Ethnicities" isOpen={open.ethnicities} onToggle={toggle} count={counts.ethnicities}>
           {refDataState.ethnicities === 'loading' ? <LoadingPlaceholder /> :
@@ -447,6 +469,7 @@ export default function FilterPanel() {
            <Combobox items={refData.ethnicities} selected={state.facets.ethnicities} onToggle={id => toggleFacet('ethnicities', id)}
              placeholder="Search ethnicities…" disabled={dis} />}
         </Section>
+        </>)}
 
         <div className="h-4" />
       </div>

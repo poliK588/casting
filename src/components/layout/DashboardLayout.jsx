@@ -112,7 +112,7 @@ export default function DashboardLayout({ type }) {
           activeNav ? 'w-[320px] border-r border-slate-200' : 'w-0'
         }`}>
           <div className="w-full h-full min-w-[320px]">
-            {activeNav && <FilterPanel />}
+            {activeNav && <FilterPanel activeGroup={activeNav} />}
           </div>
         </aside>
 

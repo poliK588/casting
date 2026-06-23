@@ -81,7 +81,7 @@ export default function TalentProfileForm({
   const [form, setForm] = useState({
     // ── Identity ──
     first_name: '', last_name: '', gender: '', birth_date: '', age_range: '',
-    union_status: 'Non-Union', union_number: '', agent_name: '',
+    union_status: 'Non-union', union_number: '', agent_name: '',
     image_url: '', status: '', role: '',
     // ── Physical ──
     height_ft: '', height_in: '', weight_lbs: '',
