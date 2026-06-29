@@ -16,20 +16,18 @@ const BOOL_FIELDS = new Set([
   'experience_driving', 'experience_bartending', 'experience_serving'
 ]);
 
-// ── Fields that must NEVER be sent to the 'profiles' table ──
-const PRIVATE_FIELDS = new Set([
-  'phone', 'street_address', 'unit_number', 'postal_code'
-]);
-
-// ── Relational / join-only fields (stored in junction tables, not 'profiles') ──
-const RELATION_FIELDS = new Set([
-  'ethnicity', 'skills', 'languages',
-  'profile_private_info', 'user_skills', 'user_languages', 'user_ethnicities'
-]);
-
-// ── Supabase metadata that must never be sent back on upsert ──
-const META_FIELDS = new Set([
-  'id', 'created_at', 'updated_at', 'fts'
+// ── Verified Writable Columns (Whitelist) ──
+const PROFILE_WRITE_FIELDS = new Set([
+  'auth_id', 'name', 'age', 'gender', 'location', 'union_status', 'status',
+  'rating', 'credits', 'rate', 'recent_credit', 'image_url', 'first_name',
+  'last_name', 'birth_date', 'age_range', 'height_ft', 'height_in',
+  'weight_lbs', 'shoe_size', 'shirt_size', 'pant_size', 'waist_size_in',
+  'neck_size_in', 'sleeve_size_in', 'inseam_size_in', 'hat_size',
+  'hair_color', 'hair_length', 'physical_disability', 'union_number',
+  'transportation', 'description', 'city', 'province', 'experience_driving',
+  'experience_bartending', 'experience_serving', 'role', 'submitted',
+  'agent_name', 'contact_email', 'contact_phone', 'social_links', 'media',
+  'verification_status', 'eye_color'
 ]);
 
 export const profileGuard = {
@@ -62,8 +60,13 @@ export const profileGuard = {
     const province = raw.province || 'Ontario';
     const location = city ? `${city}, ${province}` : (raw.location || province);
 
-    // Build the base payload from raw — take EVERYTHING the form provides
-    const payload = { ...raw };
+    // Build the payload using ONLY whitelisted fields
+    const payload = {};
+    for (const field of PROFILE_WRITE_FIELDS) {
+      if (raw[field] !== undefined) {
+        payload[field] = raw[field];
+      }
+    }
 
     // Inject system-level computed fields
     payload.auth_id = sessionUserId;
@@ -100,11 +103,6 @@ export const profileGuard = {
         payload[field] = v === true || v === 'true' || v === 1 || v === '1';
       }
     }
-
-    // ── Strip fields that do NOT belong in the 'profiles' table ──
-    for (const field of PRIVATE_FIELDS) delete payload[field];
-    for (const field of RELATION_FIELDS) delete payload[field];
-    for (const field of META_FIELDS) delete payload[field];
 
     // Remove any undefined values (Supabase rejects explicit undefined)
     return Object.fromEntries(

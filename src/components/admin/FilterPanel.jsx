@@ -107,7 +107,7 @@ export default function FilterPanel({ activeGroup }) {
   } = useSearch();
 
   const [open, setOpen] = useState({
-    search: true, verification: true, availability: false, dates: false,
+    search: true, verification: true, availability: true, dates: true,
     age: true, height: false, weight: false, gender: true, union: false,
     appearance: false, location: false, sizes: false, logistics: false,
     skills: false, languages: false, ethnicities: false,
@@ -147,7 +147,9 @@ export default function FilterPanel({ activeGroup }) {
   const dis = !isSearchEngineReady;
   const isDemographics = activeGroup === 'demographics';
   const isAppearance = activeGroup === 'appearance';
-  const showAll = !isDemographics && !isAppearance;
+  const isUnion = activeGroup === 'union';
+  const isAvailability = activeGroup === 'availability';
+  const showAll = !isDemographics && !isAppearance && !isUnion && !isAvailability;
 
   return (
     <aside className="w-full h-full bg-white flex flex-col overflow-hidden">
@@ -205,7 +207,9 @@ export default function FilterPanel({ activeGroup }) {
             <CheckRow label="Unverified Profiles" checked={state.facets.verification_status?.includes('unverified')} onChange={() => toggleFacet('verification_status', 'unverified')} disabled={dis} />
           </div>
         </Section>
+        </>)}
 
+        {(isAvailability || showAll) && (<>
         {/* ── Availability ── */}
         <Section id="availability" title="Availability" isOpen={open.availability} onToggle={toggle} count={counts.availability}>
           <div className="flex flex-col gap-1.5">
@@ -353,7 +357,7 @@ export default function FilterPanel({ activeGroup }) {
         </Section>
         </>)}
 
-        {showAll && (<>
+        {(isUnion || showAll) && (<>
         {/* ── Union Status ── */}
         <Section id="union" title="Union Status" isOpen={open.union} onToggle={toggle} count={counts.union}>
           <div className="flex flex-col gap-1">

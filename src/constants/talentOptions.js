@@ -49,7 +49,7 @@ export const TALENT_OPTIONS = {
 };
 
 export const AVAILABILITY_OPTIONS = [
-  'available now',
-  'on hold',
-  'booked',
+  'Available Now',
+  'On Hold',
+  'Booked',
 ];
