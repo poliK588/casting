@@ -3,6 +3,7 @@ import Icon from '../shared/Icon';
 import PortalSelect from '../shared/PortalSelect';
 import SearchableMultiSelect from '../shared/SearchableMultiSelect';
 import { TALENT_OPTIONS } from '../../constants/talentOptions';
+import { CITY_OPTIONS } from '../../constants/locations';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { AppContext } from '../../context/AppContext';
@@ -494,9 +495,7 @@ export default function TalentProfileForm({
         {/* ── Block 4: Professional & Location ── */}
         <Block title="Professional & Location" icon="folder">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Field label="City">
-              <input name="city" className={inputCls()} placeholder="e.g. Toronto" value={form.city || ''} onChange={handleChange} />
-            </Field>
+            <PortalSelect label="City" value={form.city} onChange={v => set('city', v)} options={CITY_OPTIONS} placeholder="Select your city" />
             <PortalSelect label="Province" value={form.province} onChange={v => set('province', v)} options={TALENT_OPTIONS.PROVINCES} />
             <PortalSelect label="Transportation" value={form.transportation} onChange={v => set('transportation', v)} options={TALENT_OPTIONS.TRANSPORTATION} />
             <Field label="Contact Email">

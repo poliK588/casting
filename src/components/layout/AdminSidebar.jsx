@@ -34,6 +34,7 @@ export default function AdminSidebar() {
   const navItems = [
     { id:'demographics',  icon:'user',      label:'Demographics' },
     { id:'appearance',    icon:'eye',       label:'Appearance' },
+    { id:'verification',  icon:'checkCircle', label:'Verification' },
     { id:'location',      icon:'map',       label:'Location' },
     { id:'union',         icon:'shield',    label:'Union' },
     { id:'availability',  icon:'calendar',  label:'Availability' },

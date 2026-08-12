@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { useSearch } from '../../context/SearchContext';
 import { HEIGHT_DEFAULT_RANGE } from '../../utils/queryCompiler';
-import { AVAILABILITY_OPTIONS } from '../../constants/talentOptions';
+import { AVAILABILITY_OPTIONS, PROVINCES_OPTIONS } from '../../constants/talentOptions';
+import { CITY_OPTIONS } from '../../constants/locations';
 import { formatInchesToFeet } from '../../utils/heightFormat';
 import Combobox from './Combobox';
 import Icon from '../shared/Icon';
@@ -31,7 +32,7 @@ const UNION_STATUS_OPTIONS = [
 const HAIR_COLOR_OPTIONS = ['Black','Brown','Blonde','Red','Grey','White','Bald','Other'];
 const HAIR_LENGTH_OPTIONS = ['Short','Medium','Long','Shaved','Bald'];
 const EYE_COLOR_OPTIONS = ['Brown','Blue','Green','Hazel','Grey','Other'];
-const PROVINCE_OPTIONS = ['ON','BC','AB','QC','MB','SK','NS','NB','PE','NL'];
+const PROVINCE_ITEMS = PROVINCES_OPTIONS.map(p => ({ id: p, name: p }));
 const TRANSPORTATION_OPTIONS = ['Car','Truck','Motorcycle','Bicycle','Transit','None'];
 
 // ── Reusable subcomponents (outside main component to prevent remounts) ──
@@ -109,7 +110,7 @@ export default function FilterPanel({ activeGroup }) {
   const [open, setOpen] = useState({
     search: true, verification: true, availability: true, dates: true,
     age: true, height: false, weight: false, gender: true, union: false,
-    appearance: false, location: false, sizes: false, logistics: false,
+    appearance: false, location: false, city: false, sizes: false, logistics: false,
     skills: false, languages: false, ethnicities: false,
   });
   const toggle = useCallback((key) => setOpen(prev => ({ ...prev, [key]: !prev[key] })), []);
@@ -136,7 +137,8 @@ export default function FilterPanel({ activeGroup }) {
       union: facetCount('union_status'),
       appearance: facetCount('hair_color') + facetCount('hair_length') + facetCount('eye_color'),
       location: facetCount('province'),
-      sizes: facetCount('shirt_size') + facetCount('pant_size') + facetCount('hat_size') + facetCount('shoe_size'),
+      city: facetCount('city'),
+      sizes: facetCount('shirt_size') + facetCount('pant_size') + facetCount('hat_size') + facetCount('shoe_size') + facetCount('waist_size') + facetCount('neck_size') + facetCount('inseam_size'),
       logistics: facetCount('transportation'),
       skills: facetCount('skills'),
       languages: facetCount('languages'),
@@ -149,7 +151,11 @@ export default function FilterPanel({ activeGroup }) {
   const isAppearance = activeGroup === 'appearance';
   const isUnion = activeGroup === 'union';
   const isAvailability = activeGroup === 'availability';
-  const showAll = !isDemographics && !isAppearance && !isUnion && !isAvailability;
+  const isLocation = activeGroup === 'location';
+  const isMeasurements = activeGroup === 'measurements';
+  const isVerification = activeGroup === 'verification';
+  const isSkills = activeGroup === 'skills';
+  const showAll = !isDemographics && !isAppearance && !isUnion && !isAvailability && !isLocation && !isMeasurements && !isVerification && !isSkills;
 
   return (
     <aside className="w-full h-full bg-white flex flex-col overflow-hidden">
@@ -199,12 +205,14 @@ export default function FilterPanel({ activeGroup }) {
             )}
           </div>
         </Section>
+        </>)}
 
+        {(isVerification || showAll) && (<>
         {/* ── Verification ── */}
         <Section id="verification" title="Verification" isOpen={open.verification} onToggle={toggle} count={counts.verification}>
           <div className="flex flex-col gap-1">
-            <CheckRow label="Verified Profiles" checked={state.facets.verification_status?.includes('verified')} onChange={() => toggleFacet('verification_status', 'verified')} disabled={dis} />
-            <CheckRow label="Unverified Profiles" checked={state.facets.verification_status?.includes('unverified')} onChange={() => toggleFacet('verification_status', 'unverified')} disabled={dis} />
+            <CheckRow label="Verified" checked={state.facets.verification_status?.includes('verified')} onChange={() => toggleFacet('verification_status', 'verified')} disabled={dis} />
+            <CheckRow label="Unverified" checked={state.facets.verification_status?.includes('unverified')} onChange={() => toggleFacet('verification_status', 'unverified')} disabled={dis} />
           </div>
         </Section>
         </>)}
@@ -291,7 +299,7 @@ export default function FilterPanel({ activeGroup }) {
         </Section>
         </>)}
 
-        {showAll && (<>
+        {(isMeasurements || showAll) && (<>
         {/* ── Height Range ── */}
         <Section id="height" title="Height" isOpen={open.height} onToggle={toggle} count={counts.height}>
           <div className="space-y-2">
@@ -335,6 +343,27 @@ export default function FilterPanel({ activeGroup }) {
               <input type="range" min={80} max={350} step={5} value={state.range.weight[1]} disabled={dis}
                 onChange={e => setWeightRange([state.range.weight[0], Math.max(+e.target.value, state.range.weight[0] + 5)])} />
             </div>
+          </div>
+        </Section>
+        {/* ── Wardrobe Sizes ── */}
+        <Section id="sizes" title="Wardrobe Sizes" isOpen={open.sizes} onToggle={toggle} count={counts.sizes}>
+          <div className="space-y-2">
+            {['shirt_size','pant_size','shoe_size','hat_size','waist_size','neck_size','inseam_size'].map(sizeKey => {
+              const label = sizeKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+              return (
+                <div key={sizeKey}>
+                  <p className="text-[10px] text-slate-400 mb-1">{label}</p>
+                  <input type="text" value={state.facets[sizeKey]?.[0] || ''} disabled={dis}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (!val) { if (state.facets[sizeKey]?.length) toggleFacet(sizeKey, state.facets[sizeKey][0]); }
+                      else { if (state.facets[sizeKey]?.length) toggleFacet(sizeKey, state.facets[sizeKey][0]); toggleFacet(sizeKey, val); }
+                    }}
+                    placeholder={`e.g. ${sizeKey === 'shoe_size' ? '10.5' : 'L'}`}
+                    className="w-full h-7 px-2 text-xs border border-slate-200 rounded text-slate-700 focus:outline-none focus:border-navy-400 disabled:opacity-50" />
+                </div>
+              );
+            })}
           </div>
         </Section>
         </>)}
@@ -400,44 +429,29 @@ export default function FilterPanel({ activeGroup }) {
         </Section>
         </>)}
 
-        {showAll && (<>
+        {(isLocation || showAll) && (<>
         {/* ── Location ── */}
-        <Section id="location" title="Location" isOpen={open.location} onToggle={toggle} count={counts.location}>
-          <div className="grid grid-cols-3 gap-1.5">
-            {PROVINCE_OPTIONS.map(p => {
-              const active = state.facets.province?.includes(p);
-              return (
-                <button key={p} onClick={() => toggleFacet('province', p)} disabled={dis}
-                  className={`text-xs py-1.5 rounded-lg border font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed
-                    ${active ? 'bg-navy-50 border-navy-700 text-navy-900' : 'border-slate-200 text-slate-500 hover:border-navy-300'}`}>
-                  {p}
-                </button>
-              );
-            })}
+        <Section id="location" title="Location" isOpen={open.location} onToggle={toggle} count={counts.location + counts.city}>
+          <div className="space-y-3">
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 mb-1.5">Province</p>
+              <Combobox items={PROVINCE_ITEMS} selected={state.facets.province || []} onToggle={id => toggleFacet('province', id)}
+                placeholder="Search provinces…" disabled={dis} />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 mb-1.5">City</p>
+              <div className="flex flex-col gap-1">
+                {CITY_OPTIONS.map(c => (
+                  <CheckRow key={c} label={c} checked={state.facets.city?.includes(c)} onChange={() => toggleFacet('city', c)} disabled={dis} />
+                ))}
+              </div>
+            </div>
           </div>
         </Section>
+        </>)}
 
-        {/* ── Wardrobe Sizes ── */}
-        <Section id="sizes" title="Wardrobe Sizes" isOpen={open.sizes} onToggle={toggle} count={counts.sizes}>
-          <div className="space-y-2">
-            {['shirt_size','pant_size','hat_size','shoe_size'].map(sizeKey => {
-              const label = sizeKey.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-              return (
-                <div key={sizeKey}>
-                  <p className="text-[10px] text-slate-400 mb-1">{label}</p>
-                  <input type="text" value={state.facets[sizeKey]?.[0] || ''} disabled={dis}
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (!val) { if (state.facets[sizeKey]?.length) toggleFacet(sizeKey, state.facets[sizeKey][0]); }
-                      else { if (state.facets[sizeKey]?.length) toggleFacet(sizeKey, state.facets[sizeKey][0]); toggleFacet(sizeKey, val); }
-                    }}
-                    placeholder={`e.g. ${sizeKey === 'shoe_size' ? '10.5' : 'L'}`}
-                    className="w-full h-7 px-2 text-xs border border-slate-200 rounded text-slate-700 focus:outline-none focus:border-navy-400 disabled:opacity-50" />
-                </div>
-              );
-            })}
-          </div>
-        </Section>
+        {showAll && (<>
+
 
         {/* ── Logistics ── */}
         <Section id="logistics" title="Logistics" isOpen={open.logistics} onToggle={toggle} count={counts.logistics}>
@@ -447,7 +461,9 @@ export default function FilterPanel({ activeGroup }) {
             ))}
           </div>
         </Section>
+        </>)}
 
+        {(isSkills || showAll) && (<>
         {/* ── Skills ── */}
         <Section id="skills" title="Skills" isOpen={open.skills} onToggle={toggle} count={counts.skills}>
           {refDataState.skills === 'loading' ? <LoadingPlaceholder /> :

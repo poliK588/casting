@@ -51,6 +51,7 @@ export const FACET_SCHEMA = {
   eye_color: { type: 'string', rpc: 'p_eye_color', url: 'eye' },
   union_status: { type: 'string', rpc: 'p_union_status', url: 'union' },
   province: { type: 'string', rpc: 'p_province', url: 'prov' },
+  city: { type: 'string', rpc: 'p_city', url: 'city' },
   shirt_size: { type: 'string', rpc: 'p_shirt_size', url: 'shirt' },
   pant_size: { type: 'string', rpc: 'p_pant_size', url: 'pant' },
   hat_size: { type: 'string', rpc: 'p_hat_size', url: 'hat' },

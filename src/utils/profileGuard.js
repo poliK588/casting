@@ -25,7 +25,7 @@ const PROFILE_WRITE_FIELDS = new Set([
   'neck_size_in', 'sleeve_size_in', 'inseam_size_in', 'hat_size',
   'hair_color', 'hair_length', 'physical_disability', 'union_number',
   'transportation', 'description', 'city', 'province', 'experience_driving',
-  'experience_bartending', 'experience_serving', 'role', 'submitted',
+  'experience_bartending', 'experience_serving', 'submitted',
   'agent_name', 'contact_email', 'contact_phone', 'social_links', 'media',
   'verification_status', 'eye_color'
 ]);
