@@ -248,7 +248,10 @@ export default function TalentProfileForm({
     try {
       const profileId = authProfile?.id;
       // 1. Delete DB record
-      const { error: delErr } = await supabase.from('media').delete().eq('id', item.id);
+      const { error: delErr } = await supabase.rpc('soft_delete_media', {
+        p_media_id: item.id,
+      });
+
       if (delErr) throw delErr;
 
       // 2. Remove from storage

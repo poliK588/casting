@@ -211,7 +211,10 @@ export default function TalentMediaPage() {
   /* ─── Delete ─── */
   const handleDelete = async (item) => {
     try {
-      const { error } = await supabase.from('media').delete().eq('id', item.id);
+      const { error } = await supabase.rpc('soft_delete_media', {
+        p_media_id: item.id,
+      });
+
       if (error) throw error;
       if (item.storage_path) await supabase.storage.from('avatars').remove([item.storage_path]);
       if (item.is_primary && profileId) {
