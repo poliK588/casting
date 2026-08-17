@@ -207,18 +207,34 @@ export default function TalentProfileForm({
           .replace(/[^a-z0-9]/g, '_').slice(0, 15);
         const storagePath = `portfolio/${session.user.id}/${Date.now()}_${idx}_${safeBase}.${fileExt}`;
 
-        const { error: upErr } = await supabase.storage.from('avatars').upload(storagePath, file, { upsert: true });
+        const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+        const bucketId = mediaType === 'image' ? 'talent-images' : 'talent-videos';
+
+        const { error: upErr } = await supabase.storage.from(bucketId).upload(storagePath, file, { upsert: false });
         if (upErr) throw upErr;
 
-        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(storagePath);
-        const mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+        // Public URL only for images; video stays null (resolved at runtime via signed URLs)
+        let mediaUrl = null;
+        if (mediaType === 'image') {
+          const { data: { publicUrl } } = supabase.storage.from(bucketId).getPublicUrl(storagePath);
+          mediaUrl = publicUrl;
+        }
+
         const isPrimary = isGalleryEmpty && idx === 0 && mediaType === 'image';
 
         const { error: dbErr } = await supabase.from('media').insert({
           profile_id: profileId,
-          url: publicUrl,
+          url: mediaUrl,
           storage_path: storagePath,
           type: mediaType,
+          provider: 'supabase',
+          bucket_id: bucketId,
+          status: 'ready',
+          access_level: mediaType === 'image' ? 'public' : 'private',
+          ai_usage_scope: mediaType === 'image' ? 'profile_search' : 'none',
+          mime_type: file.type || null,
+          original_filename: file.name || null,
+          file_size_bytes: file.size || null,
           is_primary: isPrimary,
           display_order: (mediaItems?.length || 0) + idx,
         });
@@ -226,10 +242,10 @@ export default function TalentProfileForm({
 
         // If this is the first-ever primary, sync to profiles.image_url
         if (isPrimary) {
-          await supabase.from('profiles').update({ image_url: publicUrl }).eq('id', profileId);
-          set('image_url', publicUrl);
+          await supabase.from('profiles').update({ image_url: mediaUrl }).eq('id', profileId);
+          set('image_url', mediaUrl);
         }
-        return publicUrl;
+        return mediaUrl;
       }));
 
       await refreshProfile();
@@ -254,10 +270,7 @@ export default function TalentProfileForm({
 
       if (delErr) throw delErr;
 
-      // 2. Remove from storage
-      if (item.storage_path) {
-        await supabase.storage.from('avatars').remove([item.storage_path]);
-      }
+      // 2. Removed direct storage deletion (handled by backend via soft_delete_media)
 
       // 3. If deleted item was primary, promote next
       if (item.is_primary && profileId) {

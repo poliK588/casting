@@ -3,6 +3,52 @@ import { supabase } from '../services/supabaseClient';
 
 const AuthContext = createContext();
 
+/**
+ * Resolve runtime URLs for media items based on their bucket_id.
+ * - talent-images: public URL via getPublicUrl
+ * - talent-videos / talent-audio: signed URL via createSignedUrl (1h TTL)
+ * - avatars (legacy): keep existing item.url unchanged
+ * - missing provider/storage_path/bucket_id: keep unchanged
+ *
+ * Signed URLs are held in memory only — never persisted to the database.
+ */
+const resolveMediaRuntimeUrls = async (items) => {
+  return Promise.all(
+    items.map(async (item) => {
+      // Skip items that aren't Supabase-managed or lack required fields
+      if (item.provider !== 'supabase' || !item.storage_path || !item.bucket_id) {
+        return item;
+      }
+
+      // Public bucket — resolve a fresh public URL
+      if (item.bucket_id === 'talent-images') {
+        const { data: { publicUrl } } = supabase.storage
+          .from('talent-images')
+          .getPublicUrl(item.storage_path);
+        return { ...item, url: publicUrl };
+      }
+
+      // Private buckets — generate a signed URL (3600s = 1 hour)
+      if (item.bucket_id === 'talent-videos' || item.bucket_id === 'talent-audio') {
+        const { data, error } = await supabase.storage
+          .from(item.bucket_id)
+          .createSignedUrl(item.storage_path, 3600);
+        if (error) {
+          console.error(
+            `[resolveMediaRuntimeUrls] Failed to sign URL for media id=${item.id} bucket=${item.bucket_id}:`,
+            error
+          );
+          return item; // fall back to original URL
+        }
+        return { ...item, url: data.signedUrl };
+      }
+
+      // Legacy bucket (avatars) or any unknown bucket — keep unchanged
+      return item;
+    })
+  );
+};
+
 export const AuthProvider = ({ children }) => {
   const [authState, setAuthState] = useState({
     session: null,
@@ -69,7 +115,7 @@ export const AuthProvider = ({ children }) => {
             .select('*')
             .eq('profile_id', profileData.id)
             .order('display_order', { ascending: true });
-          mediaData = media || [];
+          mediaData = await resolveMediaRuntimeUrls(media || []);
         }
         setAuthState({
           session,
@@ -133,7 +179,7 @@ export const AuthProvider = ({ children }) => {
             .select('*')
             .eq('profile_id', data.id)
             .order('display_order', { ascending: true });
-          mediaData = media || [];
+          mediaData = await resolveMediaRuntimeUrls(media || []);
         }
         setAuthState(prev => ({ ...prev, profile: data ?? null, mediaItems: mediaData, profileError: false }));
       }

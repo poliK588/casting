@@ -185,17 +185,40 @@ export default function TalentMediaPage() {
         const ext  = file.name.split('.').pop().toLowerCase();
         const safe = (profile.first_name || 'media').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 15);
         const path = `portfolio/${session.user.id}/${Date.now()}_${idx}_${safe}.${ext}`;
-        const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
-        if (upErr) throw upErr;
-        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
         const mType = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'image';
+        const bucketId = mType === 'image' ? 'talent-images'
+                       : mType === 'video' ? 'talent-videos'
+                       : 'talent-audio';
+
+        const { error: upErr } = await supabase.storage.from(bucketId).upload(path, file, { upsert: false });
+        if (upErr) throw upErr;
+
+        // Public URL only for images; video/audio stay null (resolved at runtime via signed URLs)
+        let mediaUrl = null;
+        if (mType === 'image') {
+          const { data: { publicUrl } } = supabase.storage.from(bucketId).getPublicUrl(path);
+          mediaUrl = publicUrl;
+        }
+
         const isPrimary = isEmpty && idx === 0 && mType === 'image';
         const { error: dbErr } = await supabase.from('media').insert({
-          profile_id: profileId, url: publicUrl, storage_path: path,
-          type: mType, is_primary: isPrimary, display_order: (mediaItems?.length || 0) + idx,
+          profile_id: profileId,
+          url: mediaUrl,
+          storage_path: path,
+          type: mType,
+          provider: 'supabase',
+          bucket_id: bucketId,
+          status: 'ready',
+          access_level: mType === 'image' ? 'public' : 'private',
+          ai_usage_scope: mType === 'image' ? 'profile_search' : 'none',
+          mime_type: file.type || null,
+          original_filename: file.name || null,
+          file_size_bytes: file.size || null,
+          is_primary: isPrimary,
+          display_order: (mediaItems?.length || 0) + idx,
         });
         if (dbErr) throw dbErr;
-        if (isPrimary) await supabase.from('profiles').update({ image_url: publicUrl }).eq('id', profileId);
+        if (isPrimary) await supabase.from('profiles').update({ image_url: mediaUrl }).eq('id', profileId);
       }));
       await refreshProfile();
       showToast?.(`${files.length} file${files.length > 1 ? 's' : ''} uploaded!`);
@@ -216,7 +239,7 @@ export default function TalentMediaPage() {
       });
 
       if (error) throw error;
-      if (item.storage_path) await supabase.storage.from('avatars').remove([item.storage_path]);
+      // Storage deletion handled asynchronously via soft_delete_media
       if (item.is_primary && profileId) {
         const { data: rest } = await supabase.from('media').select('*').eq('profile_id', profileId)
           .order('display_order', { ascending: true }).limit(1);

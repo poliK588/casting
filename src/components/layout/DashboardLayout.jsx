@@ -16,7 +16,7 @@ import { normalizeProfile } from '../../utils/profileAdapter';
 export default function DashboardLayout({ type }) {
   const isAdmin = type === 'admin';
   const isTalent = type === 'talent';
-  const { user: authUser } = useAuth();
+  const { user: authUser, profile: globalProfile } = useAuth();
   const { activeNav } = useContext(AppContext);
 
   // ── State ──
@@ -94,7 +94,13 @@ export default function DashboardLayout({ type }) {
   }, [loadProfile]);
 
   // ── Build user object for HUD (Zone B) directly from normalized profile ──
-  const user = isTalent ? profile : null;
+  const user = isTalent
+    ? {
+        ...profile,
+        image_url: globalProfile?.image_url ?? profile?.image_url,
+        heroImg: globalProfile?.image_url ?? profile?.heroImg,
+      }
+    : null;
 
   // ── Admin: 3-level layout ──
   if (isAdmin) {
