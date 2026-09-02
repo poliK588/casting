@@ -3,6 +3,7 @@ import Icon from '../shared/Icon';
 import PortalSelect from '../shared/PortalSelect';
 import SearchableMultiSelect from '../shared/SearchableMultiSelect';
 import { TALENT_OPTIONS } from '../../constants/talentOptions';
+import { VEHICLE_MAKES, VEHICLE_COLORS } from '../../constants/vehicleOptions';
 import { CITY_OPTIONS } from '../../constants/locations';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -72,10 +73,13 @@ const Toggle = ({ label, name, checked, onChange }) => (
    Main Form Component
 ═══════════════════════════════════════════════════════ */
 
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR + 1 - 1900 + 1 }, (_, i) => String(CURRENT_YEAR + 1 - i));
+
 export default function TalentProfileForm({
   initialData = {}, privateData = {},
   skillOptions = [], langOptions = [], ethOptions = [],
-  vehicles = [],
+  vehicles = [], onVehicleAdded,
   onSubmit, isSubmitting, errorMsg, hideCancel, onCancel
 }) {
   const { refreshProfile, mediaItems, profile: authProfile } = useAuth();
@@ -108,6 +112,20 @@ export default function TalentProfileForm({
   const [mediaUploading, setMediaUploading] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [initialSnapshot, setInitialSnapshot] = useState(null);
+
+  // ── Add Vehicle local state (separate from profile form) ──
+  const [showAddVehicle, setShowAddVehicle] = useState(false);
+  const [newVehicle, setNewVehicle] = useState({ make: '', model: '', year: '', color: '' });
+  const [addingVehicle, setAddingVehicle] = useState(false);
+  const [addVehicleError, setAddVehicleError] = useState('');
+
+  // ── Delete Vehicle local state ──
+  const [deletingVehicleId, setDeletingVehicleId] = useState(null);
+  const [deleteVehicleError, setDeleteVehicleError] = useState('');
+  const [vehicleDeleteConfirm, setVehicleDeleteConfirm] = useState(null);
+
+  // ── Delete Media local state ──
+  const [deleteMediaConfirm, setDeleteMediaConfirm] = useState(null);
 
   useEffect(() => {
     if (initialData && Object.keys(initialData).length > 0) {
@@ -148,6 +166,72 @@ export default function TalentProfileForm({
     if (initialSnapshot) {
       setForm(initialSnapshot);
       setIsDirty(false);
+    }
+  };
+
+  // ── Add Vehicle handler ──
+  const handleAddVehicle = async () => {
+    setAddVehicleError('');
+
+    if (!newVehicle.make.trim()) { setAddVehicleError('Make is required'); return; }
+    if (!newVehicle.model.trim()) { setAddVehicleError('Model is required'); return; }
+    if (newVehicle.year) {
+      const y = parseInt(newVehicle.year, 10);
+      if (isNaN(y) || y < 1900 || y > 2100) { setAddVehicleError('Year must be between 1900 and 2100'); return; }
+    }
+
+    const profileId = authProfile?.id;
+    if (!profileId) { setAddVehicleError('Profile not found. Save your profile first.'); return; }
+
+    setAddingVehicle(true);
+    try {
+      const row = {
+        profile_id: profileId,
+        make: newVehicle.make.trim(),
+        model: newVehicle.model.trim(),
+        year: newVehicle.year ? parseInt(newVehicle.year, 10) : null,
+        color: newVehicle.color.trim() || null,
+      };
+
+      const { error } = await supabase.from('talent_vehicles').insert(row);
+      if (error) throw error;
+
+      setNewVehicle({ make: '', model: '', year: '', color: '' });
+      setShowAddVehicle(false);
+      if (onVehicleAdded) await onVehicleAdded();
+    } catch (err) {
+      console.error('Failed to add vehicle:', err);
+      setAddVehicleError(err.message || 'Failed to add vehicle.');
+    } finally {
+      setAddingVehicle(false);
+    }
+  };
+
+  // ── Delete Vehicle handler ──
+  const handleDeleteVehicle = async (vehicleId) => {
+    setDeletingVehicleId(vehicleId);
+    setDeleteVehicleError('');
+
+    try {
+      const { data, error } = await supabase
+        .from('talent_vehicles')
+        .delete()
+        .eq('id', vehicleId)
+        .select('id');
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Vehicle was not deleted.');
+      }
+
+      if (onVehicleAdded) await onVehicleAdded();
+      return true;
+    } catch (err) {
+      console.error('Failed to delete vehicle:', err);
+      setDeleteVehicleError(err.message || 'Failed to delete vehicle.');
+      return false;
+    } finally {
+      setDeletingVehicleId(null);
     }
   };
 
@@ -390,7 +474,7 @@ export default function TalentProfileForm({
                   <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={() => handleDeleteMedia(item)}
+                      onClick={() => setDeleteMediaConfirm(item)}
                       className="w-7 h-7 bg-red-500/80 hover:bg-red-500 rounded-lg flex items-center justify-center transition-colors backdrop-blur-sm"
                       title="Delete"
                     >
@@ -537,11 +621,15 @@ export default function TalentProfileForm({
           </div>
         </Block>
 
-        {/* ── Block 4b: Vehicles (read-only) ── */}
+        {/* ── Block 4b: Vehicles ── */}
         <Block title="Vehicles" icon="folder">
-          {vehicles.length === 0 ? (
+          {vehicles.length === 0 && !showAddVehicle && (
             <p className="text-sm text-slate-500 italic">No vehicles on file.</p>
-          ) : (
+          )}
+          {deleteVehicleError && (
+            <p className="text-xs text-red-400 font-semibold mb-2">{deleteVehicleError}</p>
+          )}
+          {vehicles.length > 0 && (
             <div className="space-y-3">
               {vehicles.map(v => (
                 <div key={v.id} className="flex items-center gap-4 px-4 py-3 bg-white/5 border border-white/10 rounded-xl">
@@ -567,9 +655,52 @@ export default function TalentProfileForm({
                       </div>
                     )}
                   </div>
+                  {typeof onVehicleAdded === 'function' && (
+                    <button
+                      type="button"
+                      onClick={() => setVehicleDeleteConfirm(v)}
+                      className="text-xs font-bold text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Add Vehicle inline form */}
+          {typeof onVehicleAdded === 'function' && (
+            showAddVehicle ? (
+              <div className="mt-4 p-4 bg-white/5 border border-white/10 rounded-xl space-y-4">
+                {addVehicleError && <p className="text-xs text-red-400 font-semibold">{addVehicleError}</p>}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <PortalSelect label={<>Make <span className="text-red-400">*</span></>} value={newVehicle.make} onChange={v => setNewVehicle(p => ({ ...p, make: v }))} options={VEHICLE_MAKES} placeholder="Select make" />
+                  <Field label={<>Model <span className="text-red-400">*</span></>}>
+                    <input className={inputCls()} placeholder="e.g. Camry" value={newVehicle.model} onChange={e => setNewVehicle(p => ({ ...p, model: e.target.value }))} />
+                  </Field>
+                  <PortalSelect label="Year" value={newVehicle.year} onChange={v => setNewVehicle(p => ({ ...p, year: v }))} options={YEAR_OPTIONS} placeholder="Select year" />
+                  <PortalSelect label="Color" value={newVehicle.color} onChange={v => setNewVehicle(p => ({ ...p, color: v }))} options={VEHICLE_COLORS} placeholder="Select color" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={handleAddVehicle} disabled={addingVehicle}
+                    className="btn-primary h-8 px-4 !rounded-lg text-xs font-bold flex items-center gap-1.5">
+                    {addingVehicle ? 'Saving…' : 'Save Vehicle'}
+                  </button>
+                  <button type="button" disabled={addingVehicle}
+                    onClick={() => { setShowAddVehicle(false); setNewVehicle({ make: '', model: '', year: '', color: '' }); setAddVehicleError(''); }}
+                    className="h-8 px-4 border border-white/10 rounded-lg text-xs font-bold text-slate-400 hover:bg-white/5 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setShowAddVehicle(true)}
+                className="mt-4 flex items-center gap-1.5 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors">
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" d="M12 4v16m8-8H4"/></svg>
+                Add Vehicle
+              </button>
+            )
           )}
         </Block>
 
@@ -615,6 +746,87 @@ export default function TalentProfileForm({
             </Field>
           </div>
         </Block>
+
+        {/* ── Vehicle Delete Confirmation Modal ── */}
+        {vehicleDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="glass-panel !rounded-2xl p-6 max-w-sm w-full animate-in fade-in zoom-in duration-200">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500 mb-4">
+                  <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </div>
+                <h3 className="text-lg font-bold text-white mb-1">
+                  Delete Vehicle?
+                </h3>
+                <p className="text-sm text-white/40 mb-2">
+                  This action cannot be undone.
+                </p>
+                <p className="text-sm font-semibold text-white/80 mb-6">
+                  {vehicleDeleteConfirm.make} {vehicleDeleteConfirm.model}{vehicleDeleteConfirm.year ? ` ${vehicleDeleteConfirm.year}` : ''}
+                </p>
+                <div className="flex gap-3 w-full">
+                  <button
+                    type="button"
+                    onClick={() => setVehicleDeleteConfirm(null)}
+                    disabled={deletingVehicleId === vehicleDeleteConfirm.id}
+                    className="flex-1 h-11 rounded-xl border border-white/10 text-white text-sm font-semibold hover:bg-white/5 disabled:opacity-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const success = await handleDeleteVehicle(vehicleDeleteConfirm.id);
+                      if (success) setVehicleDeleteConfirm(null);
+                    }}
+                    disabled={deletingVehicleId === vehicleDeleteConfirm.id}
+                    className="flex-1 h-11 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+                  >
+                    {deletingVehicleId === vehicleDeleteConfirm.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Media Delete Confirmation Modal ── */}
+        {deleteMediaConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="glass-panel !rounded-2xl p-6 max-w-sm w-full animate-in fade-in zoom-in duration-200">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500 mb-4">
+                  <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </div>
+                <h3 className="text-lg font-bold text-white mb-1">
+                  Delete {deleteMediaConfirm.type === 'image' ? 'Photo' : deleteMediaConfirm.type === 'video' ? 'Video' : 'Audio'}?
+                </h3>
+                <p className="text-sm text-white/40 mb-6">
+                  This action cannot be undone.
+                </p>
+                <div className="flex gap-3 w-full">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteMediaConfirm(null)}
+                    className="flex-1 h-11 rounded-xl border border-white/10 text-white text-sm font-semibold hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleDeleteMedia(deleteMediaConfirm);
+                      setDeleteMediaConfirm(null);
+                    }}
+                    className="flex-1 h-11 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       </form>
 

@@ -95,28 +95,29 @@ export default function TalentProfilePage() {
     fetchMediaCount();
   }, [formData?.id]);
 
-  // ── Load talent vehicles (read-only) ──
+  // ── Load talent vehicles ──
+  const refreshVehicles = async () => {
+    if (!formData?.id) {
+      setVehicles([]);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('talent_vehicles')
+      .select('id, make, model, year, color')
+      .eq('profile_id', formData.id)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Failed to load vehicles:', error);
+      setVehicles([]);
+      return;
+    }
+
+    setVehicles(data || []);
+  };
+
   useEffect(() => {
-    const fetchVehicles = async () => {
-      if (!formData?.id) {
-        setVehicles([]);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('talent_vehicles')
-        .select('id, make, model, year, color')
-        .eq('profile_id', formData.id)
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Failed to load vehicles:', error);
-        setVehicles([]);
-        return;
-      }
-
-      setVehicles(data || []);
-    };
-    fetchVehicles();
+    refreshVehicles();
   }, [formData?.id]);
 
   // ── Save Logic ──
@@ -255,6 +256,7 @@ export default function TalentProfilePage() {
         langOptions={langOptions}
         ethOptions={ethOptions}
         vehicles={vehicles}
+        onVehicleAdded={refreshVehicles}
         onSubmit={handleSave}
         isSubmitting={isSubmitting}
         errorMsg={errorMsg}
