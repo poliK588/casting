@@ -16,6 +16,7 @@ export default function TalentProfilePage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [mediaCount, setMediaCount] = useState(0);
+  const [vehicles, setVehicles] = useState([]);
 
   // ── Load Logic ──
   useEffect(() => {
@@ -92,6 +93,30 @@ export default function TalentProfilePage() {
       setMediaCount(count || 0);
     };
     fetchMediaCount();
+  }, [formData?.id]);
+
+  // ── Load talent vehicles (read-only) ──
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      if (!formData?.id) {
+        setVehicles([]);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('talent_vehicles')
+        .select('id, make, model, year, color')
+        .eq('profile_id', formData.id)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Failed to load vehicles:', error);
+        setVehicles([]);
+        return;
+      }
+
+      setVehicles(data || []);
+    };
+    fetchVehicles();
   }, [formData?.id]);
 
   // ── Save Logic ──
@@ -229,6 +254,7 @@ export default function TalentProfilePage() {
         skillOptions={skillOptions}
         langOptions={langOptions}
         ethOptions={ethOptions}
+        vehicles={vehicles}
         onSubmit={handleSave}
         isSubmitting={isSubmitting}
         errorMsg={errorMsg}

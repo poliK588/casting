@@ -75,6 +75,7 @@ const Toggle = ({ label, name, checked, onChange }) => (
 export default function TalentProfileForm({
   initialData = {}, privateData = {},
   skillOptions = [], langOptions = [], ethOptions = [],
+  vehicles = [],
   onSubmit, isSubmitting, errorMsg, hideCancel, onCancel
 }) {
   const { refreshProfile, mediaItems, profile: authProfile } = useAuth();
@@ -534,6 +535,42 @@ export default function TalentProfileForm({
               <textarea name="description" rows={4} className={`${inputCls()} h-auto py-3 resize-none`} placeholder="Summarize your experience and professional highlights..." value={form.description || ''} onChange={handleChange} />
             </Field>
           </div>
+        </Block>
+
+        {/* ── Block 4b: Vehicles (read-only) ── */}
+        <Block title="Vehicles" icon="folder">
+          {vehicles.length === 0 ? (
+            <p className="text-sm text-slate-500 italic">No vehicles on file.</p>
+          ) : (
+            <div className="space-y-3">
+              {vehicles.map(v => (
+                <div key={v.id} className="flex items-center gap-4 px-4 py-3 bg-white/5 border border-white/10 rounded-xl">
+                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Make</span>
+                      <p className="text-sm text-white font-medium">{v.make}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Model</span>
+                      <p className="text-sm text-white font-medium">{v.model}</p>
+                    </div>
+                    {v.year && (
+                      <div>
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Year</span>
+                        <p className="text-sm text-white font-medium">{v.year}</p>
+                      </div>
+                    )}
+                    {v.color && (
+                      <div>
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Color</span>
+                        <p className="text-sm text-white font-medium">{v.color}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Block>
 
         {/* ── Block 5: Skills & Languages ── */}
