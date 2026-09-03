@@ -127,6 +127,12 @@ export default function TalentProfileForm({
   // ── Delete Media local state ──
   const [deleteMediaConfirm, setDeleteMediaConfirm] = useState(null);
 
+  // ── Edit Vehicle local state ──
+  const [editingVehicleId, setEditingVehicleId] = useState(null);
+  const [editVehicle, setEditVehicle] = useState({ make: '', model: '', year: '', color: '' });
+  const [updatingVehicle, setUpdatingVehicle] = useState(false);
+  const [editVehicleError, setEditVehicleError] = useState('');
+
   useEffect(() => {
     if (initialData && Object.keys(initialData).length > 0) {
       setForm(prev => {
@@ -204,6 +210,64 @@ export default function TalentProfileForm({
       setAddVehicleError(err.message || 'Failed to add vehicle.');
     } finally {
       setAddingVehicle(false);
+    }
+  };
+
+  // ── Edit Vehicle handlers ──
+  const handleEditClick = (v) => {
+    if (showAddVehicle) return;
+    if (editingVehicleId && editingVehicleId !== v.id) return;
+    setEditingVehicleId(v.id);
+    setEditVehicle({
+      make: v.make || '',
+      model: v.model || '',
+      year: v.year ? String(v.year) : '',
+      color: v.color || '',
+    });
+    setEditVehicleError('');
+  };
+
+  const handleCancelEditVehicle = () => {
+    setEditingVehicleId(null);
+    setEditVehicle({ make: '', model: '', year: '', color: '' });
+    setEditVehicleError('');
+  };
+
+  const handleUpdateVehicle = async () => {
+    setEditVehicleError('');
+
+    if (!editVehicle.make.trim()) { setEditVehicleError('Make is required'); return; }
+    if (!editVehicle.model.trim()) { setEditVehicleError('Model is required'); return; }
+    if (editVehicle.year) {
+      const y = parseInt(editVehicle.year, 10);
+      if (isNaN(y) || y < 1900 || y > 2100) { setEditVehicleError('Year must be between 1900 and 2100'); return; }
+    }
+
+    setUpdatingVehicle(true);
+    try {
+      const { data, error } = await supabase
+        .from('talent_vehicles')
+        .update({
+          make: editVehicle.make.trim(),
+          model: editVehicle.model.trim(),
+          year: editVehicle.year ? parseInt(editVehicle.year, 10) : null,
+          color: editVehicle.color || null
+        })
+        .eq('id', editingVehicleId)
+        .select('id');
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Vehicle was not updated.');
+      }
+
+      if (onVehicleAdded) await onVehicleAdded();
+      handleCancelEditVehicle();
+    } catch (err) {
+      console.error('Failed to update vehicle:', err);
+      setEditVehicleError(err.message || 'Failed to update vehicle.');
+    } finally {
+      setUpdatingVehicle(false);
     }
   };
 
@@ -632,39 +696,74 @@ export default function TalentProfileForm({
           {vehicles.length > 0 && (
             <div className="space-y-3">
               {vehicles.map(v => (
-                <div key={v.id} className="flex items-center gap-4 px-4 py-3 bg-white/5 border border-white/10 rounded-xl">
-                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Make</span>
-                      <p className="text-sm text-white font-medium">{v.make}</p>
+                editingVehicleId === v.id ? (
+                  <div key={v.id} className="flex flex-col gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+                    {editVehicleError && <p className="text-xs text-red-400 font-semibold">{editVehicleError}</p>}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <PortalSelect label={<>Make <span className="text-red-400">*</span></>} value={editVehicle.make} onChange={val => setEditVehicle(p => ({ ...p, make: val }))} options={VEHICLE_MAKES} placeholder="Select make" />
+                      <Field label={<>Model <span className="text-red-400">*</span></>}>
+                        <input className={inputCls()} placeholder="e.g. Camry" value={editVehicle.model} onChange={e => setEditVehicle(p => ({ ...p, model: e.target.value }))} />
+                      </Field>
+                      <PortalSelect label="Year" value={editVehicle.year} onChange={val => setEditVehicle(p => ({ ...p, year: val }))} options={YEAR_OPTIONS} placeholder="Select year" />
+                      <PortalSelect label="Color" value={editVehicle.color} onChange={val => setEditVehicle(p => ({ ...p, color: val }))} options={VEHICLE_COLORS} placeholder="Select color" />
                     </div>
-                    <div>
-                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Model</span>
-                      <p className="text-sm text-white font-medium">{v.model}</p>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={handleUpdateVehicle} disabled={updatingVehicle}
+                        className="btn-primary h-8 px-4 !rounded-lg text-xs font-bold flex items-center gap-1.5">
+                        {updatingVehicle ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" disabled={updatingVehicle}
+                        onClick={handleCancelEditVehicle}
+                        className="h-8 px-4 border border-white/10 rounded-lg text-xs font-bold text-slate-400 hover:bg-white/5 transition-colors">
+                        Cancel
+                      </button>
                     </div>
-                    {v.year && (
+                  </div>
+                ) : (
+                  <div key={v.id} className="flex items-center gap-4 px-4 py-3 bg-white/5 border border-white/10 rounded-xl">
+                    <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div>
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Year</span>
-                        <p className="text-sm text-white font-medium">{v.year}</p>
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Make</span>
+                        <p className="text-sm text-white font-medium">{v.make}</p>
                       </div>
-                    )}
-                    {v.color && (
                       <div>
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Color</span>
-                        <p className="text-sm text-white font-medium">{v.color}</p>
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Model</span>
+                        <p className="text-sm text-white font-medium">{v.model}</p>
+                      </div>
+                      {v.year && (
+                        <div>
+                          <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Year</span>
+                          <p className="text-sm text-white font-medium">{v.year}</p>
+                        </div>
+                      )}
+                      {v.color && (
+                        <div>
+                          <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Color</span>
+                          <p className="text-sm text-white font-medium">{v.color}</p>
+                        </div>
+                      )}
+                    </div>
+                    {typeof onVehicleAdded === 'function' && (
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleEditClick(v)}
+                          disabled={showAddVehicle || (editingVehicleId !== null && editingVehicleId !== v.id)}
+                          className="text-xs font-bold text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVehicleDeleteConfirm(v)}
+                          className="text-xs font-bold text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          Delete
+                        </button>
                       </div>
                     )}
                   </div>
-                  {typeof onVehicleAdded === 'function' && (
-                    <button
-                      type="button"
-                      onClick={() => setVehicleDeleteConfirm(v)}
-                      className="text-xs font-bold text-red-400 hover:text-red-300 transition-colors"
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
+                )
               ))}
             </div>
           )}
@@ -696,7 +795,8 @@ export default function TalentProfileForm({
               </div>
             ) : (
               <button type="button" onClick={() => setShowAddVehicle(true)}
-                className="mt-4 flex items-center gap-1.5 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors">
+                disabled={editingVehicleId !== null}
+                className="mt-4 flex items-center gap-1.5 text-xs font-bold text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors">
                 <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" d="M12 4v16m8-8H4"/></svg>
                 Add Vehicle
               </button>
