@@ -114,6 +114,7 @@ export const AuthProvider = ({ children }) => {
             .from('media')
             .select('*')
             .eq('profile_id', profileData.id)
+            .eq('media_context', 'profile')
             .order('display_order', { ascending: true });
           mediaData = await resolveMediaRuntimeUrls(media || []);
         }
