@@ -133,6 +133,10 @@ export default function TalentProfileForm({
   const [updatingVehicle, setUpdatingVehicle] = useState(false);
   const [editVehicleError, setEditVehicleError] = useState('');
 
+  // ── Vehicle Photo local state ──
+  const [uploadingVehiclePhotoId, setUploadingVehiclePhotoId] = useState(null);
+  const [vehiclePhotoError, setVehiclePhotoError] = useState('');
+
   useEffect(() => {
     if (initialData && Object.keys(initialData).length > 0) {
       setForm(prev => {
@@ -272,7 +276,8 @@ export default function TalentProfileForm({
   };
 
   // ── Delete Vehicle handler ──
-  const handleDeleteVehicle = async (vehicleId) => {
+  const handleDeleteVehicle = async (vehicle) => {
+    const vehicleId = vehicle.id;
     setDeletingVehicleId(vehicleId);
     setDeleteVehicleError('');
 
@@ -288,7 +293,19 @@ export default function TalentProfileForm({
         throw new Error('Vehicle was not deleted.');
       }
 
-      if (onVehicleAdded) await onVehicleAdded();
+      // Cleanup photo only if the vehicle row was successfully deleted
+      if (vehicle.photo_media_id) {
+        const { error: photoErr } = await supabase.rpc('soft_delete_media', { p_media_id: vehicle.photo_media_id });
+        if (photoErr) console.error('Failed to clean up photo for deleted vehicle:', photoErr);
+      }
+
+      if (onVehicleAdded) {
+        try {
+          await onVehicleAdded();
+        } catch (refreshErr) {
+          console.error('Vehicle deleted successfully, but refreshing vehicles failed:', refreshErr);
+        }
+      }
       return true;
     } catch (err) {
       console.error('Failed to delete vehicle:', err);
@@ -296,6 +313,115 @@ export default function TalentProfileForm({
       return false;
     } finally {
       setDeletingVehicleId(null);
+    }
+  };
+
+  // ── Vehicle Photo upload/replace handler ──
+  const handleVehiclePhotoUpload = async (vehicle, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate: must be an image
+    if (!file.type.startsWith('image/')) {
+      setVehiclePhotoError('Only image files are allowed.');
+      e.target.value = '';
+      return;
+    }
+
+    // Validate: 5 MB limit (same as portfolio images)
+    if (file.size > 5 * 1024 * 1024) {
+      setVehiclePhotoError('File exceeds 5MB size limit.');
+      e.target.value = '';
+      return;
+    }
+
+    setUploadingVehiclePhotoId(vehicle.id);
+    setVehiclePhotoError('');
+
+    let newMediaId = null;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error('Not authenticated');
+      const profileId = authProfile?.id;
+      if (!profileId) throw new Error('Profile not found.');
+
+      // 1. Generate storage path and public URL BEFORE upload
+      const ext = file.name.split('.').pop().toLowerCase();
+      const safe = (authProfile.first_name || 'vehicle')
+        .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '_').slice(0, 15);
+      const storagePath = `portfolio/${session.user.id}/${Date.now()}_veh_${safe}.${ext}`;
+      const bucketId = 'talent-images';
+      const { data: { publicUrl } } = supabase.storage.from(bucketId).getPublicUrl(storagePath);
+
+      // 2. INSERT media row FIRST with status = 'awaiting_upload'
+      const { data: mediaData, error: dbErr } = await supabase.from('media').insert({
+        profile_id: profileId,
+        url: publicUrl,
+        storage_path: storagePath,
+        type: 'image',
+        provider: 'supabase',
+        bucket_id: bucketId,
+        status: 'awaiting_upload',
+        access_level: 'public',
+        ai_usage_scope: 'none',
+        media_context: 'vehicle',
+        mime_type: file.type || null,
+        original_filename: file.name || null,
+        file_size_bytes: file.size || null,
+        is_primary: false,
+        display_order: 9999,
+      }).select('id').single();
+
+      if (dbErr) throw dbErr;
+      newMediaId = mediaData.id;
+
+      // 3. Upload the file to Storage
+      const { error: upErr } = await supabase.storage.from(bucketId).upload(storagePath, file, { upsert: false });
+      if (upErr) throw upErr;
+
+      // 4. Finalize: mark media as ready
+      const { error: finErr } = await supabase.rpc('finalize_media_upload', {
+        p_media_id: newMediaId,
+      });
+      if (finErr) throw finErr;
+
+      // 5. Attach new photo to vehicle
+      const oldPhotoMediaId = vehicle.photo_media_id || null;
+      const { data: attachData, error: updateErr } = await supabase.from('talent_vehicles').update({
+        photo_media_id: newMediaId,
+      }).eq('id', vehicle.id).select('id');
+      if (updateErr) throw updateErr;
+      if (!attachData || attachData.length === 0) {
+        throw new Error('Vehicle was not updated — photo could not be attached.');
+      }
+
+      // 6. Success — now safe to clean up old photo
+      newMediaId = null; // Prevent finally-block cleanup
+      if (oldPhotoMediaId) {
+        const { error: oldDelErr } = await supabase.rpc('soft_delete_media', { p_media_id: oldPhotoMediaId });
+        if (oldDelErr) console.error('Failed to clean up old vehicle photo (new photo is attached):', oldDelErr);
+      }
+
+      if (onVehicleAdded) {
+        try {
+          await onVehicleAdded();
+        } catch (refreshErr) {
+          console.error('Vehicle photo attached successfully, but refreshing vehicles failed:', refreshErr);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to upload vehicle photo:', err);
+      setVehiclePhotoError(err.message || 'Upload failed.');
+    } finally {
+      // Rollback: if newMediaId is still set, something failed after INSERT
+      if (newMediaId) {
+        const { error: cleanupErr } = await supabase.rpc('soft_delete_media', { p_media_id: newMediaId });
+        if (cleanupErr) console.error('Rollback cleanup also failed for media:', newMediaId, cleanupErr);
+      }
+      setUploadingVehiclePhotoId(null);
+      e.target.value = '';
     }
   };
 
@@ -424,7 +550,7 @@ export default function TalentProfileForm({
       // 3. If deleted item was primary, promote next
       if (item.is_primary && profileId) {
         const { data: remaining } = await supabase.from('media')
-          .select('*').eq('profile_id', profileId)
+          .select('*').eq('profile_id', profileId).eq('media_context', 'profile')
           .order('display_order', { ascending: true }).limit(1);
 
         if (remaining?.length) {
@@ -693,19 +819,46 @@ export default function TalentProfileForm({
           {deleteVehicleError && (
             <p className="text-xs text-red-400 font-semibold mb-2">{deleteVehicleError}</p>
           )}
+          {vehiclePhotoError && (
+            <p className="text-xs text-red-400 font-semibold mb-2">{vehiclePhotoError}</p>
+          )}
           {vehicles.length > 0 && (
             <div className="space-y-3">
               {vehicles.map(v => (
                 editingVehicleId === v.id ? (
                   <div key={v.id} className="flex flex-col gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
                     {editVehicleError && <p className="text-xs text-red-400 font-semibold">{editVehicleError}</p>}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <PortalSelect label={<>Make <span className="text-red-400">*</span></>} value={editVehicle.make} onChange={val => setEditVehicle(p => ({ ...p, make: val }))} options={VEHICLE_MAKES} placeholder="Select make" />
-                      <Field label={<>Model <span className="text-red-400">*</span></>}>
-                        <input className={inputCls()} placeholder="e.g. Camry" value={editVehicle.model} onChange={e => setEditVehicle(p => ({ ...p, model: e.target.value }))} />
-                      </Field>
-                      <PortalSelect label="Year" value={editVehicle.year} onChange={val => setEditVehicle(p => ({ ...p, year: val }))} options={YEAR_OPTIONS} placeholder="Select year" />
-                      <PortalSelect label="Color" value={editVehicle.color} onChange={val => setEditVehicle(p => ({ ...p, color: val }))} options={VEHICLE_COLORS} placeholder="Select color" />
+                    <div className="flex items-start gap-4">
+                      {/* Photo thumbnail during edit */}
+                      <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-black/40 border border-white/10 flex items-center justify-center relative group">
+                        {v.photo?.url ? (
+                          <img src={v.photo.url} alt={`${v.make} ${v.model}`} className="w-full h-full object-cover" />
+                        ) : (
+                          <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-white/20" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        )}
+                        {typeof onVehicleAdded === 'function' && (
+                          <label className="absolute inset-0 cursor-pointer opacity-0 group-hover:opacity-100 bg-black/50 transition-opacity flex items-center justify-center">
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleVehiclePhotoUpload(v, e)} disabled={uploadingVehiclePhotoId !== null} />
+                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" className="text-white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>
+                          </label>
+                        )}
+                        {uploadingVehiclePhotoId === v.id && (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
+                            <svg className="animate-spin h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <PortalSelect label={<>Make <span className="text-red-400">*</span></>} value={editVehicle.make} onChange={val => setEditVehicle(p => ({ ...p, make: val }))} options={VEHICLE_MAKES} placeholder="Select make" />
+                        <Field label={<>Model <span className="text-red-400">*</span></>}>
+                          <input className={inputCls()} placeholder="e.g. Camry" value={editVehicle.model} onChange={e => setEditVehicle(p => ({ ...p, model: e.target.value }))} />
+                        </Field>
+                        <PortalSelect label="Year" value={editVehicle.year} onChange={val => setEditVehicle(p => ({ ...p, year: val }))} options={YEAR_OPTIONS} placeholder="Select year" />
+                        <PortalSelect label="Color" value={editVehicle.color} onChange={val => setEditVehicle(p => ({ ...p, color: val }))} options={VEHICLE_COLORS} placeholder="Select color" />
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={handleUpdateVehicle} disabled={updatingVehicle}
@@ -721,6 +874,36 @@ export default function TalentProfileForm({
                   </div>
                 ) : (
                   <div key={v.id} className="flex items-center gap-4 px-4 py-3 bg-white/5 border border-white/10 rounded-xl">
+                    {/* Vehicle Photo Thumbnail */}
+                    <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-black/40 border border-white/10 flex items-center justify-center relative group">
+                      {v.photo?.url ? (
+                        <img src={v.photo.url} alt={`${v.make} ${v.model}`} className="w-full h-full object-cover" />
+                      ) : (
+                        <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-white/20" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                      )}
+                      {/* Upload overlay (owner only) */}
+                      {typeof onVehicleAdded === 'function' && (
+                        <label className="absolute inset-0 cursor-pointer opacity-0 group-hover:opacity-100 bg-black/50 transition-opacity flex items-center justify-center">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleVehiclePhotoUpload(v, e)}
+                            disabled={uploadingVehiclePhotoId !== null}
+                          />
+                          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" className="text-white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>
+                        </label>
+                      )}
+                      {/* Uploading spinner */}
+                      {uploadingVehiclePhotoId === v.id && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
+                          <svg className="animate-spin h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div>
                         <span className="text-[10px] font-bold text-white/40 uppercase tracking-wider">Make</span>
@@ -876,7 +1059,7 @@ export default function TalentProfileForm({
                   <button
                     type="button"
                     onClick={async () => {
-                      const success = await handleDeleteVehicle(vehicleDeleteConfirm.id);
+                      const success = await handleDeleteVehicle(vehicleDeleteConfirm);
                       if (success) setVehicleDeleteConfirm(null);
                     }}
                     disabled={deletingVehicleId === vehicleDeleteConfirm.id}

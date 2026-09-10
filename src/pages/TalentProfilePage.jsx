@@ -103,7 +103,7 @@ export default function TalentProfilePage() {
     }
     const { data, error } = await supabase
       .from('talent_vehicles')
-      .select('id, make, model, year, color')
+      .select('id, make, model, year, color, photo_media_id, photo:media!talent_vehicles_photo_media_id_fkey(id,url,storage_path,status)')
       .eq('profile_id', formData.id)
       .order('created_at', { ascending: true });
 
