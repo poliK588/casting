@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import Icon from '../shared/Icon';
 import PortalSelect from '../shared/PortalSelect';
 import SearchableMultiSelect from '../shared/SearchableMultiSelect';
@@ -118,6 +118,8 @@ export default function TalentProfileForm({
   const [newVehicle, setNewVehicle] = useState({ make: '', model: '', year: '', color: '' });
   const [addingVehicle, setAddingVehicle] = useState(false);
   const [addVehicleError, setAddVehicleError] = useState('');
+  const [newVehiclePhoto, setNewVehiclePhoto] = useState(null);
+  const [newVehiclePhotoPreview, setNewVehiclePhotoPreview] = useState(null);
 
   // ── Delete Vehicle local state ──
   const [deletingVehicleId, setDeletingVehicleId] = useState(null);
@@ -203,12 +205,36 @@ export default function TalentProfileForm({
         color: newVehicle.color.trim() || null,
       };
 
-      const { error } = await supabase.from('talent_vehicles').insert(row);
+      const { data: createdVehicle, error } = await supabase
+        .from('talent_vehicles')
+        .insert(row)
+        .select('id, make, model, year, color, photo_media_id')
+        .single();
       if (error) throw error;
 
+      // Vehicle saved — attempt photo upload if one was selected
+      if (newVehiclePhoto) {
+        try {
+          await uploadVehiclePhoto(createdVehicle, newVehiclePhoto);
+        } catch (photoErr) {
+          console.error('Vehicle saved, but photo upload failed:', photoErr);
+          setVehiclePhotoError('Vehicle saved, but photo upload failed. You can add the photo again.');
+        }
+      }
+
+      // Refresh vehicle list (vehicle exists regardless of photo outcome)
+      if (onVehicleAdded) {
+        try {
+          await onVehicleAdded();
+        } catch (refreshErr) {
+          console.error('Vehicle saved successfully, but refreshing vehicles failed:', refreshErr);
+        }
+      }
+
+      // Both paths clear and close — photo failure is surfaced via vehiclePhotoError
+      clearNewVehiclePhoto();
       setNewVehicle({ make: '', model: '', year: '', color: '' });
       setShowAddVehicle(false);
-      if (onVehicleAdded) await onVehicleAdded();
     } catch (err) {
       console.error('Failed to add vehicle:', err);
       setAddVehicleError(err.message || 'Failed to add vehicle.');
@@ -316,28 +342,8 @@ export default function TalentProfileForm({
     }
   };
 
-  // ── Vehicle Photo upload/replace handler ──
-  const handleVehiclePhotoUpload = async (vehicle, e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate: must be an image
-    if (!file.type.startsWith('image/')) {
-      setVehiclePhotoError('Only image files are allowed.');
-      e.target.value = '';
-      return;
-    }
-
-    // Validate: 5 MB limit (same as portfolio images)
-    if (file.size > 5 * 1024 * 1024) {
-      setVehiclePhotoError('File exceeds 5MB size limit.');
-      e.target.value = '';
-      return;
-    }
-
-    setUploadingVehiclePhotoId(vehicle.id);
-    setVehiclePhotoError('');
-
+  // ── Vehicle Photo upload/replace handlers ──
+  const uploadVehiclePhoto = async (vehicle, file) => {
     let newMediaId = null;
 
     try {
@@ -403,6 +409,38 @@ export default function TalentProfileForm({
         const { error: oldDelErr } = await supabase.rpc('soft_delete_media', { p_media_id: oldPhotoMediaId });
         if (oldDelErr) console.error('Failed to clean up old vehicle photo (new photo is attached):', oldDelErr);
       }
+    } finally {
+      // Rollback: if newMediaId is still set, something failed after INSERT
+      if (newMediaId) {
+        const { error: cleanupErr } = await supabase.rpc('soft_delete_media', { p_media_id: newMediaId });
+        if (cleanupErr) console.error('Rollback cleanup also failed for media:', newMediaId, cleanupErr);
+      }
+    }
+  };
+
+  const handleVehiclePhotoUpload = async (vehicle, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate: must be an image
+    if (!file.type.startsWith('image/')) {
+      setVehiclePhotoError('Only image files are allowed.');
+      e.target.value = '';
+      return;
+    }
+
+    // Validate: 5 MB limit (same as portfolio images)
+    if (file.size > 5 * 1024 * 1024) {
+      setVehiclePhotoError('File exceeds 5MB size limit.');
+      e.target.value = '';
+      return;
+    }
+
+    setUploadingVehiclePhotoId(vehicle.id);
+    setVehiclePhotoError('');
+
+    try {
+      await uploadVehiclePhoto(vehicle, file);
 
       if (onVehicleAdded) {
         try {
@@ -415,15 +453,59 @@ export default function TalentProfileForm({
       console.error('Failed to upload vehicle photo:', err);
       setVehiclePhotoError(err.message || 'Upload failed.');
     } finally {
-      // Rollback: if newMediaId is still set, something failed after INSERT
-      if (newMediaId) {
-        const { error: cleanupErr } = await supabase.rpc('soft_delete_media', { p_media_id: newMediaId });
-        if (cleanupErr) console.error('Rollback cleanup also failed for media:', newMediaId, cleanupErr);
-      }
       setUploadingVehiclePhotoId(null);
       e.target.value = '';
     }
   };
+
+  // ── Add Vehicle photo selection (local only, no upload) ──
+  const newVehiclePhotoPreviewRef = useRef(null);
+
+  const clearNewVehiclePhoto = () => {
+    if (newVehiclePhotoPreviewRef.current) {
+      URL.revokeObjectURL(newVehiclePhotoPreviewRef.current);
+      newVehiclePhotoPreviewRef.current = null;
+    }
+    setNewVehiclePhoto(null);
+    setNewVehiclePhotoPreview(null);
+  };
+
+  const handleNewVehiclePhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAddVehicleError('Only image files are allowed.');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAddVehicleError('File exceeds 5MB size limit.');
+      e.target.value = '';
+      return;
+    }
+
+    // Revoke previous preview URL before replacing
+    if (newVehiclePhotoPreviewRef.current) URL.revokeObjectURL(newVehiclePhotoPreviewRef.current);
+
+    const previewUrl = URL.createObjectURL(file);
+    newVehiclePhotoPreviewRef.current = previewUrl;
+
+    setAddVehicleError('');
+    setNewVehiclePhoto(file);
+    setNewVehiclePhotoPreview(previewUrl);
+    e.target.value = '';
+  };
+
+  // Cleanup preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (newVehiclePhotoPreviewRef.current) {
+        URL.revokeObjectURL(newVehiclePhotoPreviewRef.current);
+      }
+    };
+  }, []);
 
   // ── Browser navigation warning ──
   useEffect(() => {
@@ -956,13 +1038,27 @@ export default function TalentProfileForm({
             showAddVehicle ? (
               <div className="mt-4 p-4 bg-white/5 border border-white/10 rounded-xl space-y-4">
                 {addVehicleError && <p className="text-xs text-red-400 font-semibold">{addVehicleError}</p>}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <PortalSelect label={<>Make <span className="text-red-400">*</span></>} value={newVehicle.make} onChange={v => setNewVehicle(p => ({ ...p, make: v }))} options={VEHICLE_MAKES} placeholder="Select make" />
-                  <Field label={<>Model <span className="text-red-400">*</span></>}>
-                    <input className={inputCls()} placeholder="e.g. Camry" value={newVehicle.model} onChange={e => setNewVehicle(p => ({ ...p, model: e.target.value }))} />
-                  </Field>
-                  <PortalSelect label="Year" value={newVehicle.year} onChange={v => setNewVehicle(p => ({ ...p, year: v }))} options={YEAR_OPTIONS} placeholder="Select year" />
-                  <PortalSelect label="Color" value={newVehicle.color} onChange={v => setNewVehicle(p => ({ ...p, color: v }))} options={VEHICLE_COLORS} placeholder="Select color" />
+                <div className="flex items-start gap-4">
+                  {/* Vehicle Photo selector */}
+                  <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-black/40 border border-white/10 flex items-center justify-center relative group">
+                    {newVehiclePhotoPreview ? (
+                      <img src={newVehiclePhotoPreview} alt="Vehicle preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-white/20" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    )}
+                    <label className="absolute inset-0 cursor-pointer opacity-0 group-hover:opacity-100 bg-black/50 transition-opacity flex items-center justify-center">
+                      <input type="file" accept="image/*" className="hidden" onChange={handleNewVehiclePhotoSelect} disabled={addingVehicle} />
+                      <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" className="text-white" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>
+                    </label>
+                  </div>
+                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <PortalSelect label={<>Make <span className="text-red-400">*</span></>} value={newVehicle.make} onChange={v => setNewVehicle(p => ({ ...p, make: v }))} options={VEHICLE_MAKES} placeholder="Select make" />
+                    <Field label={<>Model <span className="text-red-400">*</span></>}>
+                      <input className={inputCls()} placeholder="e.g. Camry" value={newVehicle.model} onChange={e => setNewVehicle(p => ({ ...p, model: e.target.value }))} />
+                    </Field>
+                    <PortalSelect label="Year" value={newVehicle.year} onChange={v => setNewVehicle(p => ({ ...p, year: v }))} options={YEAR_OPTIONS} placeholder="Select year" />
+                    <PortalSelect label="Color" value={newVehicle.color} onChange={v => setNewVehicle(p => ({ ...p, color: v }))} options={VEHICLE_COLORS} placeholder="Select color" />
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={handleAddVehicle} disabled={addingVehicle}
@@ -970,7 +1066,7 @@ export default function TalentProfileForm({
                     {addingVehicle ? 'Saving…' : 'Save Vehicle'}
                   </button>
                   <button type="button" disabled={addingVehicle}
-                    onClick={() => { setShowAddVehicle(false); setNewVehicle({ make: '', model: '', year: '', color: '' }); setAddVehicleError(''); }}
+                    onClick={() => { setShowAddVehicle(false); setNewVehicle({ make: '', model: '', year: '', color: '' }); setAddVehicleError(''); clearNewVehiclePhoto(); }}
                     className="h-8 px-4 border border-white/10 rounded-lg text-xs font-bold text-slate-400 hover:bg-white/5 transition-colors">
                     Cancel
                   </button>
