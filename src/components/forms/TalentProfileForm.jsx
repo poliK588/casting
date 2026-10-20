@@ -100,7 +100,7 @@ export default function TalentProfileForm({
     city: '', province: '', contact_email: '', contact_phone: '',
     // ── Experience / Bio ──
     experience_driving: false, experience_bartending: false, experience_serving: false,
-    transportation: '', description: '', recent_credit: '',
+    description: '', recent_credit: '',
     // ── Relations (junction tables) ──
     skills: [], languages: []
   });
@@ -870,7 +870,6 @@ export default function TalentProfileForm({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <PortalSelect label="City" value={form.city} onChange={v => set('city', v)} options={CITY_OPTIONS} placeholder="Select your city" />
             <PortalSelect label="Province" value={form.province} onChange={v => set('province', v)} options={TALENT_OPTIONS.PROVINCES} />
-            <PortalSelect label="Transportation" value={form.transportation} onChange={v => set('transportation', v)} options={TALENT_OPTIONS.TRANSPORTATION} />
             <Field label="Contact Email">
               <input name="contact_email" type="email" className={inputCls()} placeholder="email@example.com" value={form.contact_email || ''} onChange={handleChange} />
             </Field>

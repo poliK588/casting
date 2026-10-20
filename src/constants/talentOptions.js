@@ -40,7 +40,6 @@ export const LANGUAGES_LIST = [
   "Swedish", "Tagalog", "Tamil", "Turkish", "Ukrainian", "Urdu", "Vietnamese"
 ];
 
-export const TRANSPORTATION_OPTIONS = ['Own Vehicle', 'Public Transit', 'Bicycle', 'Rideshare', 'Walk', 'None'];
 export const HAT_SIZE_OPTIONS = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Fitted 6 7/8', 'Fitted 7', 'Fitted 7 1/8', 'Fitted 7 1/4', 'Fitted 7 3/8', 'Fitted 7 1/2', 'Fitted 7 5/8'];
 export const PANT_SIZE_OPTIONS = ['24', '26', '28', '29', '30', '31', '32', '33', '34', '36', '38', '40', '42', '44'];
 
@@ -56,7 +55,6 @@ export const TALENT_OPTIONS = {
   PROVINCES: PROVINCES_OPTIONS,
   SKILLS_LIST,
   LANGUAGES_LIST,
-  TRANSPORTATION: TRANSPORTATION_OPTIONS,
   HAT_SIZE: HAT_SIZE_OPTIONS,
   PANT_SIZE: PANT_SIZE_OPTIONS,
   SHOE_SIZE: SHOE_SIZES
