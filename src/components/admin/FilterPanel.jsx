@@ -33,7 +33,6 @@ const HAIR_COLOR_OPTIONS = ['Black','Brown','Blonde','Red','Grey','White','Bald'
 const HAIR_LENGTH_OPTIONS = ['Short','Medium','Long','Shaved','Bald'];
 const EYE_COLOR_OPTIONS = ['Brown','Blue','Green','Hazel','Grey','Other'];
 const PROVINCE_ITEMS = PROVINCES_OPTIONS.map(p => ({ id: p, name: p }));
-const TRANSPORTATION_OPTIONS = ['Car','Truck','Motorcycle','Bicycle','Transit','None'];
 
 // ── Reusable subcomponents (outside main component to prevent remounts) ──
 
@@ -110,7 +109,7 @@ export default function FilterPanel({ activeGroup }) {
   const [open, setOpen] = useState({
     search: true, verification: true, availability: true, dates: true,
     age: true, height: false, weight: false, gender: true, union: false,
-    appearance: false, location: false, city: false, sizes: false, logistics: false,
+    appearance: false, location: false, city: false, sizes: false,
     skills: false, languages: false, ethnicities: false,
   });
   const toggle = useCallback((key) => setOpen(prev => ({ ...prev, [key]: !prev[key] })), []);
@@ -139,7 +138,6 @@ export default function FilterPanel({ activeGroup }) {
       location: facetCount('province'),
       city: facetCount('city'),
       sizes: facetCount('shirt_size') + facetCount('pant_size') + facetCount('hat_size') + facetCount('shoe_size') + facetCount('waist_size') + facetCount('neck_size') + facetCount('inseam_size'),
-      logistics: facetCount('transportation'),
       skills: facetCount('skills'),
       languages: facetCount('languages'),
       ethnicities: facetCount('ethnicities'),
@@ -446,19 +444,6 @@ export default function FilterPanel({ activeGroup }) {
                 ))}
               </div>
             </div>
-          </div>
-        </Section>
-        </>)}
-
-        {showAll && (<>
-
-
-        {/* ── Logistics ── */}
-        <Section id="logistics" title="Logistics" isOpen={open.logistics} onToggle={toggle} count={counts.logistics}>
-          <div className="flex flex-col gap-1">
-            {TRANSPORTATION_OPTIONS.map(t => (
-              <CheckRow key={t} label={t} checked={state.facets.transportation?.includes(t)} onChange={() => toggleFacet('transportation', t)} disabled={dis} />
-            ))}
           </div>
         </Section>
         </>)}

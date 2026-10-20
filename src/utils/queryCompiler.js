@@ -56,7 +56,6 @@ export const FACET_SCHEMA = {
   pant_size: { type: 'string', rpc: 'p_pant_size', url: 'pant' },
   hat_size: { type: 'string', rpc: 'p_hat_size', url: 'hat' },
   shoe_size: { type: 'string', rpc: 'p_shoe_size', url: 'shoe' },
-  transportation: { type: 'string', rpc: 'p_transportation', url: 'trans' },
   verification_status: { type: 'string', rpc: 'p_verification_status', url: 'verif' },
   availability: { type: 'string', rpc: 'p_availability', url: 'avail' },
   skills: { type: 'uuid', rpc: 'p_skills', url: 'skills' },
